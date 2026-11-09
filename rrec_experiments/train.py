@@ -103,6 +103,20 @@ def make_batch(data, indices, start, size):
     return data.train[:, indices[start:start + size]]
 
 
+def source_revision():
+    root = Path(__file__).resolve().parent.parent
+    try:
+        top = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], cwd=root,
+                                      stderr=subprocess.DEVNULL, text=True).strip()
+        if Path(top).resolve() == root:
+            return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root,
+                                           stderr=subprocess.DEVNULL, text=True).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    recorded = root / "SOURCE_COMMIT"
+    return recorded.read_text().strip() if recorded.is_file() else None
+
+
 def train_epoch(model, optimizer, graph, data, args, epoch):
     model.train()
     device = model.embedding.weight.device
@@ -174,11 +188,7 @@ def run(args):
     model = SGL(data.num_users, data.num_items, args.dim, args.layers, args.init_std).to(device)
     graph = normalized_graph(data, device, self_loops=args.self_loops)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    try:
-        commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parent,
-                                         stderr=subprocess.DEVNULL, text=True).strip()
-    except subprocess.CalledProcessError:
-        commit = None
+    commit = source_revision()
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
               "selection_metric": f"validation recall@{args.selection_k} + ndcg@{args.selection_k}"}

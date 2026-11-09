@@ -2,23 +2,51 @@
 
 这个独立本地仓库用于检验：Yelp2018 上，Full Sampling 为什么在 SGL 中比 Fast Sampling 更差，以及是否存在头部用户的推荐监督与对比约束失衡。
 
-使用 PyTorch 完成模型计算，安装 NumPy 供 PyTorch 互操作使用，无需 torch-geometric / torch-sparse。支持 CPU 和 CUDA；Apple MPS 不支持本项目使用的稀疏图计算，Mac 上使用 CPU。原始 R-Rec 仓库与数据不会被修改。
+源码、Yelp2018 数据、启动脚本与说明都在这个项目中，无需另一个 R-Rec 目录。使用 PyTorch 完成模型计算，无需 torch-geometric / torch-sparse，支持 CPU 和 CUDA。
 
-## 安装
+## 上传服务器即可运行
 
-使用原生架构的 Python 3.10 或更高版本。当前电脑已经用原生 ARM Python 3.11 创建了 `.venv` 并安装依赖，可以直接使用。
+项目结构：
 
-新环境安装：
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[test]'
-.venv/bin/python -m pytest -p no:capture -q
+```text
+R-Rec-Sampling-Experiments/
+├── data/yelp2018/          # 已包含 train.txt、test.txt 和校验值
+├── rrec_experiments/      # 模型、采样、训练、诊断与汇总
+├── run_yelp.sh            # 从任何目录启动；路径按项目根目录解析
+├── requirements.txt       # 服务器安装入口
+├── scripts/package_project.py
+├── tests/                 # 自动测试与微型数据
+└── runs/                  # 运行时自动生成结果与 checkpoint
 ```
 
-如果 macOS 上 `python3` 实际是 Rosetta 的 x86_64 解释器，可能没有兼容的新 PyTorch wheel，应改用原生 ARM 解释器。CUDA 服务器可按 PyTorch 官方说明安装匹配的 CUDA wheel，再安装本项目。
+上传整个项目，或解压提供的服务器包。使用 Python 3.10 或更高版本；本地验证使用 3.11。第一次运行，在项目目录内执行：
 
-这里的测试命令关闭 pytest 的终端捕获插件，用于绕过当前 Anaconda Python 的原生 readline 导入崩溃，不影响测试内容。其他正常环境也可以直接 `python -m pytest -q`。本机验证的依赖版本见 `requirements-tested.txt`。
+```bash
+tar -xzf R-Rec-Sampling-Experiments-server.tar.gz
+cd R-Rec-Sampling-Experiments
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+./run_yelp.sh --dry-run
+./run_yelp.sh --device cuda
+```
+
+如果服务器已有配置好 CUDA PyTorch 的 Conda/虚拟环境，可直接使用该环境，不必新建 `.venv`：
+
+```bash
+python -m pip install -r requirements.txt
+PYTHON_BIN=python ./run_yelp.sh --device cuda
+```
+
+启动器优先使用 `PYTHON_BIN`，其次使用项目内 `.venv/bin/python`，最后使用当前环境的 `python3`。安装会复用满足要求的已有 PyTorch；GPU 环境需要可用的 CUDA PyTorch。`requirements-tested.txt` 是本地验证环境记录，服务器安装使用 `requirements.txt`。
+
+后台运行示例：
+
+```bash
+mkdir -p runs
+CUDA_VISIBLE_DEVICES=0 nohup ./run_yelp.sh --device cuda > runs/console.log 2>&1 &
+```
+
+默认顺序执行 8 组 × 3 个种子，共 24 次训练。也可添加 `--variants A B C D` 先跑四组主实验，或添加 `--seeds 0` 先跑一个种子。模型与结果都写到本项目的 `runs/yelp2018/`。
 
 ## 实验设计
 
@@ -49,23 +77,23 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 ./run_yelp.sh
 ```
 
-它默认读取同级 `R-Rec/data/yelp2018`，也可添加 `--dry-run` 或其他参数。等价的完整命令为：
+它默认读取项目内 `data/yelp2018`，也可添加 `--dry-run` 或其他参数。等价的完整命令为：
 
 ```bash
 .venv/bin/python -m rrec_experiments.suite \
-  --data-dir /Users/chenyijun/Desktop/R-Rec/data/yelp2018 \
+  --data-dir data/yelp2018 \
   --output-dir runs/yelp2018 \
   --seeds 0 1 2 \
   --epochs 1000
 ```
 
-默认是 8 组 × 3 个随机种子，共 24 次完整训练；这个命令不会自动在后台运行。Yelp2018 的全节点 SGL 计算量较大，建议在 CUDA 服务器执行。迁移时复制代码、提供相同格式的数据，并修改 `--data-dir`。
+默认是 8 组 × 3 个随机种子，共 24 次完整训练；这个命令不会自动在后台运行。整包迁移后不需要修改路径。
 
 只预览命令、不开始训练：
 
 ```bash
 .venv/bin/python -m rrec_experiments.suite \
-  --data-dir /Users/chenyijun/Desktop/R-Rec/data/yelp2018 \
+  --data-dir data/yelp2018 \
   --output-dir runs/yelp2018 --dry-run
 ```
 
@@ -75,7 +103,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 
 ```bash
 .venv/bin/python -m rrec_experiments.train \
-  --data-dir /Users/chenyijun/Desktop/R-Rec/data/yelp2018 \
+  --data-dir data/yelp2018 \
   --output-dir runs/single_C --variant C --seed 0 --device cuda
 ```
 
@@ -93,6 +121,25 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 ```
 
 这会实际完成 16 次微型训练并汇总，验证所有路径能够工作。微型数据的指标不用于支持 Yelp2018 的科学结论。
+
+如需运行自动测试，先安装测试依赖：
+
+```bash
+.venv/bin/python -m pip install -e '.[test]'
+.venv/bin/python -m pytest -p no:capture -q
+```
+
+关闭 capture 插件用于绕过本地 Anaconda 的原生 readline 问题，不影响测试内容。服务器正常环境也可直接使用 `python -m pytest -q`。
+
+## 重新打包
+
+在本地仓库提交修改后执行：
+
+```bash
+python3 scripts/package_project.py
+```
+
+生成 `dist/R-Rec-Sampling-Experiments-server.tar.gz` 及 SHA-256 文件。包内包含已提交的代码、数据、测试和说明，排除本机 `.venv`、运行输出、缓存及 Git 元数据。`SOURCE_COMMIT` 保存提交号，使服务器无需安装 Git 也能在实验配置中记录代码版本。
 
 ## 验证与测试协议
 

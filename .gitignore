@@ -5,5 +5,13 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 runs/
-data/
 *.pt
+dist/
+SOURCE_COMMIT
+/data/*
+!/data/README.md
+!/data/yelp2018/
+/data/yelp2018/*
+!/data/yelp2018/train.txt
+!/data/yelp2018/test.txt
+!/data/yelp2018/SHA256SUMS
