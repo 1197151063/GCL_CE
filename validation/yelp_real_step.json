@@ -1,0 +1,29 @@
+{
+  "data": {
+    "num_users": 31668,
+    "num_items": 38048,
+    "train_edges": 1128375,
+    "validation_edges": 108884,
+    "test_edges": 324147,
+    "fingerprint": "8b1f810749203c8cdbbeadf12721ea7934232b329f7ca72fc812ff3b55997dfa",
+    "user_groups": {
+      "head": 3167,
+      "middle": 12667,
+      "tail": 15834,
+      "cold": 0
+    },
+    "item_groups": {
+      "head": 3804,
+      "middle": 15216,
+      "tail": 19020,
+      "cold": 8
+    }
+  },
+  "probe_batch_size": 16,
+  "dim": 8,
+  "layers": 3,
+  "bpr_loss": 0.6931458711624146,
+  "weighted_cl_loss": 2.7433297634124756,
+  "seconds": 2.1394362449645996,
+  "note": "Real Yelp2018 full-graph optimizer-step smoke only; not a full training result."
+}

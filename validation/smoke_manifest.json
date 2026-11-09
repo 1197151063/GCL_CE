@@ -1,0 +1,151 @@
+{
+  "purpose": "End-to-end functionality only; tiny data scores do not establish a Yelp2018 finding.",
+  "runs": [
+    {
+      "variant": "A",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "A",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "B",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "B",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "C",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "C",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "D",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "D",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "bpr-fast",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "bpr-fast",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "bpr-full",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "bpr-full",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "shared-fast",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "shared-fast",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "shared-full",
+      "seed": 0,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    },
+    {
+      "variant": "shared-full",
+      "seed": 1,
+      "optimizer_steps": 4,
+      "best_epoch": 1,
+      "gradient_diagnostics": true,
+      "geometry_diagnostics": true,
+      "test_group_metrics": true
+    }
+  ],
+  "variants": 8,
+  "seeds_per_variant": 2
+}
