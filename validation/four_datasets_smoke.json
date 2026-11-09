@@ -1,0 +1,149 @@
+{
+  "purpose": "Full-graph one-update smoke tests only; not convergence or recommendation-quality results.",
+  "runs": [
+    {
+      "dataset": "yelp2018",
+      "profile": {
+        "ssl_weight": 0.2,
+        "temperature": 0.2,
+        "drop_ratio": 0.1,
+        "decay": 0.0001
+      },
+      "data": {
+        "num_users": 31668,
+        "num_items": 38048,
+        "train_edges": 1128375,
+        "validation_edges": 108884,
+        "test_edges": 324147,
+        "fingerprint": "8b1f810749203c8cdbbeadf12721ea7934232b329f7ca72fc812ff3b55997dfa",
+        "user_groups": {
+          "head": 3167,
+          "middle": 12667,
+          "tail": 15834,
+          "cold": 0
+        },
+        "item_groups": {
+          "head": 3804,
+          "middle": 15216,
+          "tail": 19020,
+          "cold": 8
+        }
+      },
+      "dim": 8,
+      "layers": 3,
+      "probe_edges": 16,
+      "bpr_loss": 0.693149209022522,
+      "weighted_cl_loss": 2.7442524433135986,
+      "seconds": 2.000861883163452,
+      "finite_gradients_and_updated_parameters": true
+    },
+    {
+      "dataset": "amazon-book",
+      "profile": {
+        "ssl_weight": 0.5,
+        "temperature": 0.2,
+        "drop_ratio": 0.1,
+        "decay": 0.0001
+      },
+      "data": {
+        "num_users": 52643,
+        "num_items": 91599,
+        "train_edges": 2167218,
+        "validation_edges": 213512,
+        "test_edges": 603378,
+        "fingerprint": "3a04cc6f424b3d81613ff0c78b178e19cecc4877eee05b9eb1a57ac5cf0c9f49",
+        "user_groups": {
+          "head": 5265,
+          "middle": 21057,
+          "tail": 26321,
+          "cold": 0
+        },
+        "item_groups": {
+          "head": 9154,
+          "middle": 36616,
+          "tail": 45769,
+          "cold": 60
+        }
+      },
+      "dim": 8,
+      "layers": 3,
+      "probe_edges": 16,
+      "bpr_loss": 0.6931471228599548,
+      "weighted_cl_loss": 7.55456018447876,
+      "seconds": 3.387078046798706,
+      "finite_gradients_and_updated_parameters": true
+    },
+    {
+      "dataset": "gowalla",
+      "profile": {
+        "ssl_weight": 0.3,
+        "temperature": 0.2,
+        "drop_ratio": 0.2,
+        "decay": 0.0001
+      },
+      "data": {
+        "num_users": 29858,
+        "num_items": 40981,
+        "train_edges": 737091,
+        "validation_edges": 73037,
+        "test_edges": 217242,
+        "fingerprint": "78008c0201c5b2a6df7628b5f8ea8e7f5e7960b995e49d5ac88143b40e02cfef",
+        "user_groups": {
+          "head": 2986,
+          "middle": 11943,
+          "tail": 14929,
+          "cold": 0
+        },
+        "item_groups": {
+          "head": 4098,
+          "middle": 16392,
+          "tail": 20490,
+          "cold": 1
+        }
+      },
+      "dim": 8,
+      "layers": 3,
+      "probe_edges": 16,
+      "bpr_loss": 0.6931522488594055,
+      "weighted_cl_loss": 4.162344932556152,
+      "seconds": 1.3918421268463135,
+      "finite_gradients_and_updated_parameters": true
+    },
+    {
+      "dataset": "iFashion",
+      "profile": {
+        "ssl_weight": 0.02,
+        "temperature": 0.5,
+        "drop_ratio": 0.4,
+        "decay": 0.001
+      },
+      "data": {
+        "num_users": 300000,
+        "num_items": 81614,
+        "train_edges": 956991,
+        "validation_edges": 298456,
+        "test_edges": 352366,
+        "fingerprint": "6d7251570afc5909b5c494ea1140ad690d5a2531d4ca1b1f2ade04cf92143a4c",
+        "user_groups": {
+          "head": 30000,
+          "middle": 120000,
+          "tail": 150000,
+          "cold": 0
+        },
+        "item_groups": {
+          "head": 7609,
+          "middle": 30436,
+          "tail": 38044,
+          "cold": 5525
+        }
+      },
+      "dim": 8,
+      "layers": 3,
+      "probe_edges": 16,
+      "bpr_loss": 0.6931442618370056,
+      "weighted_cl_loss": 0.4167187809944153,
+      "seconds": 3.87768292427063,
+      "finite_gradients_and_updated_parameters": true
+    }
+  ]
+}

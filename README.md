@@ -1,8 +1,8 @@
 # SGL 采样对照实验
 
-这个独立本地仓库用于检验：Yelp2018 上，Full Sampling 为什么在 SGL 中比 Fast Sampling 更差，以及是否存在头部用户的推荐监督与对比约束失衡。
+这个 Git 项目用于检验：Yelp2018、Amazon-Book、Gowalla、iFashion 上，Full Sampling 与 Fast Sampling 在 SGL 中的差异，以及是否存在头部用户的推荐监督与对比约束失衡。
 
-源码、Yelp2018 数据、启动脚本与说明都在这个项目中，无需另一个 R-Rec 目录。使用 PyTorch 完成模型计算，无需 torch-geometric / torch-sparse，支持 CPU 和 CUDA。
+源码、四个数据集、启动脚本与说明都纳入同一个 Git 仓库，无需另一个 R-Rec 目录。使用 PyTorch 完成模型计算，无需 torch-geometric / torch-sparse，支持 CPU 和 CUDA。
 
 ## 上传服务器即可运行
 
@@ -10,31 +10,35 @@
 
 ```text
 R-Rec-Sampling-Experiments/
-├── data/yelp2018/          # 已包含 train.txt、test.txt 和校验值
+├── data/yelp2018/          # 每个数据集包含 train.txt、test.txt 和校验值
+├── data/amazon-book/
+├── data/gowalla/
+├── data/iFashion/
 ├── rrec_experiments/      # 模型、采样、训练、诊断与汇总
-├── run_yelp.sh            # 从任何目录启动；路径按项目根目录解析
+├── run_experiments.sh     # 统一入口，默认四个数据集
+├── run_yelp.sh            # Yelp2018 的便捷入口
 ├── requirements.txt       # 服务器安装入口
 ├── scripts/package_project.py
 ├── tests/                 # 自动测试与微型数据
 └── runs/                  # 运行时自动生成结果与 checkpoint
 ```
 
-上传整个项目，或解压提供的服务器包。使用 Python 3.10 或更高版本；本地验证使用 3.11。第一次运行，在项目目录内执行：
+项目通过 Git 维护。提供的 .bundle 包含完整 Git 历史和四个数据集；上传到服务器后直接克隆，得到可继续提交和同步的 Git 仓库。使用 Python 3.10 或更高版本；本地验证使用 3.11：
 
 ```bash
-tar -xzf R-Rec-Sampling-Experiments-server.tar.gz
+git clone R-Rec-Sampling-Experiments.bundle R-Rec-Sampling-Experiments
 cd R-Rec-Sampling-Experiments
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-./run_yelp.sh --dry-run
-./run_yelp.sh --device cuda
+./run_experiments.sh --dry-run
+./run_experiments.sh --device cuda
 ```
 
 如果服务器已有配置好 CUDA PyTorch 的 Conda/虚拟环境，可直接使用该环境，不必新建 `.venv`：
 
 ```bash
 python -m pip install -r requirements.txt
-PYTHON_BIN=python ./run_yelp.sh --device cuda
+PYTHON_BIN=python ./run_experiments.sh --device cuda
 ```
 
 启动器优先使用 `PYTHON_BIN`，其次使用项目内 `.venv/bin/python`，最后使用当前环境的 `python3`。安装会复用满足要求的已有 PyTorch；GPU 环境需要可用的 CUDA PyTorch。`requirements-tested.txt` 是本地验证环境记录，服务器安装使用 `requirements.txt`。
@@ -43,10 +47,46 @@ PYTHON_BIN=python ./run_yelp.sh --device cuda
 
 ```bash
 mkdir -p runs
-CUDA_VISIBLE_DEVICES=0 nohup ./run_yelp.sh --device cuda > runs/console.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup ./run_experiments.sh --device cuda > runs/console.log 2>&1 &
 ```
 
-默认顺序执行 8 组 × 3 个种子，共 24 次训练。也可添加 `--variants A B C D` 先跑四组主实验，或添加 `--seeds 0` 先跑一个种子。模型与结果都写到本项目的 `runs/yelp2018/`。
+默认顺序执行 4 个数据集 × 8 组 × 3 个种子，共 96 次训练。也可添加 `--variants A B C D` 先跑四组主实验，或添加 `--seeds 0` 先跑一个种子。结果分别写到 `runs/yelp2018/`、`runs/amazon-book/`、`runs/gowalla/`、`runs/iFashion/`，各数据集单独汇总。
+
+只跑指定数据集：
+
+```bash
+./run_experiments.sh --datasets amazon-book --device cuda
+./run_experiments.sh --datasets gowalla iFashion --device cuda
+```
+
+每个数据集使用显式参数配置，八组对照共享完全相同的设置：
+
+| 数据集 | CL 权重 | 温度 | ED 丢边率 | L2 |
+|---|---:|---:|---:|---:|
+| yelp2018 | 0.2 | 0.2 | 0.1 | 1e-4 |
+| amazon-book | 0.5 | 0.2 | 0.1 | 1e-4 |
+| gowalla | 0.3 | 0.2 | 0.2 | 1e-4 |
+| iFashion | 0.02 | 0.5 | 0.4 | 1e-3 |
+
+这些数值取自原 SGL.py 的数据集配置。本项目四个数据集统一使用 ED；原代码的 Gowalla 使用 RW，因此这里不宣称复现其 RW 分数。统一的 3 层、64 维、初始化 std=0.01 不变。CLI 显式参数可覆盖预设，例如 `--temperature 0.3`；实际值写入每次运行的 config.json。直接使用底层 train/suite 模块时应显式提供所需参数，预设由统一启动入口应用。
+
+## Git 维护和服务器同步
+
+代码、八份 train/test 数据文件以及对应校验值均由 Git 跟踪。虚拟环境、运行结果和模型权重保留在项目内，由 .gitignore 排除。
+
+后续修改照常 git add、git commit。没有配置远程服务时，可以重新导出 bundle，把最新提交同步到服务器：
+
+```bash
+# 本地仓库导出全部提交
+mkdir -p dist
+git bundle create dist/R-Rec-Sampling-Experiments.bundle --all
+
+# 服务器收到新版 bundle 后，在服务器仓库内更新
+git fetch /path/to/R-Rec-Sampling-Experiments.bundle main
+git merge --ff-only FETCH_HEAD
+```
+
+如果之后配置了 Git 远程仓库，则直接使用常规 push/pull。
 
 ## 实验设计
 
@@ -139,7 +179,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 python3 scripts/package_project.py
 ```
 
-生成 `dist/R-Rec-Sampling-Experiments-server.tar.gz` 及 SHA-256 文件。包内包含已提交的代码、数据、测试和说明，排除本机 `.venv`、运行输出、缓存及 Git 元数据。`SOURCE_COMMIT` 保存提交号，使服务器无需安装 Git 也能在实验配置中记录代码版本。
+生成 `dist/R-Rec-Sampling-Experiments-server.tar.gz` 及 SHA-256 文件。包内包含已提交的代码、四个数据集、测试和说明，排除本机 `.venv`、运行输出、缓存及 Git 元数据。`SOURCE_COMMIT` 保存提交号，使服务器无需安装 Git 也能在实验配置中记录代码版本。
 
 ## 验证与测试协议
 

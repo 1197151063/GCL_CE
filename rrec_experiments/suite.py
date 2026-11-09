@@ -7,12 +7,14 @@ import sys
 
 from .train import VARIANTS, jsonable, parser as training_parser, validate, write_json
 from .summarize import summarize
+from .presets import PRESETS
 
 
 def main():
     p = argparse.ArgumentParser(description="Run shared-batch baselines, 2x2 sampling matrix and no-CL controls", allow_abbrev=False,
                                 epilog="Other training options are forwarded; use train --help to list them.")
     p.add_argument("--data-dir", type=Path, required=True)
+    p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
     p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["shared-fast", "shared-full", "A", "B", "C", "D", "bpr-fast", "bpr-full"])
@@ -30,7 +32,7 @@ def main():
     for variant in args.variants:
         for seed in args.seeds:
             output = (args.output_dir / variant / f"seed_{seed}").resolve()
-            options = ["--data-dir", str(args.data_dir.resolve()), "--output-dir", str(output),
+            options = ["--dataset", args.dataset, "--data-dir", str(args.data_dir.resolve()), "--output-dir", str(output),
                        "--variant", variant, "--seed", str(seed), *extra]
             run_args = training_parser().parse_args(options)
             validate(run_args)

@@ -14,6 +14,7 @@ from .diagnostics import gradient_diagnostics
 from .metrics import evaluate
 from .model import SGL, normalized_graph, contrastive_loss
 from .sampling import batch_occupancy, epoch_indices, generator, negative_items, num_batches
+from .presets import PRESETS
 
 VARIANTS = {
     "A": ("fast", "fast", False, True),
@@ -30,6 +31,7 @@ VARIANTS = {
 def parser():
     p = argparse.ArgumentParser(description="SGL sampling experiment; see README for controlled variants", allow_abbrev=False)
     p.add_argument("--data-dir", type=Path, required=True)
+    p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom", help="Dataset label; profile applied by run_experiments.sh")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--variant", choices=VARIANTS, default="A")
     p.add_argument("--seed", type=int, default=0)

@@ -28,7 +28,7 @@ def summarize(directory, allow_incomplete=False):
     if not paths:
         raise ValueError(f"No completed suite runs under {directory}")
     groups, records, reference = {}, {}, None
-    compare_fields = ("data", "epochs", "batch_size", "dim", "layers", "init_std", "lr", "decay",
+    compare_fields = ("dataset", "data", "epochs", "batch_size", "dim", "layers", "init_std", "lr", "decay",
                       "temperature", "drop_ratio", "self_loops", "l2_source", "ssl_side", "score",
                       "split_seed", "validation_ratio", "ks", "selection_k", "eval_every", "patience",
                       "strict_determinism", "repository_commit", "torch_version")
@@ -36,6 +36,7 @@ def summarize(directory, allow_incomplete=False):
     for path in paths:
         result = json.loads(path.read_text())
         config = json.loads((path.parent / "config.json").read_text())
+        config.setdefault("dataset", "custom")
         signature = {key: config[key] for key in compare_fields}
         if reference is not None and signature != reference:
             raise ValueError(f"Cannot pool runs with different controlled settings: {path}")

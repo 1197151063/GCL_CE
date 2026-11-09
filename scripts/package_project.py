@@ -16,9 +16,11 @@ def package(root, output):
         raise ValueError("Commit project changes before packaging so SOURCE_COMMIT is accurate.")
     revision = git(root, "rev-parse", "HEAD").strip().decode()
     files = [Path(name.decode()) for name in git(root, "ls-files", "-z").split(b"\0") if name]
-    required = {Path("data/yelp2018/train.txt"), Path("data/yelp2018/test.txt")}
+    required = {Path("data") / dataset / name
+                for dataset in ["yelp2018", "amazon-book", "gowalla", "iFashion"]
+                for name in ["train.txt", "test.txt", "SHA256SUMS"]}
     if not required.issubset(files):
-        raise ValueError("The committed project must include Yelp2018 train.txt and test.txt.")
+        raise ValueError("The committed project must include all four datasets and checksums.")
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     prefix = "R-Rec-Sampling-Experiments"

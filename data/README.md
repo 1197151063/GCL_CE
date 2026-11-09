@@ -1,8 +1,8 @@
 # 项目内数据
 
-`yelp2018/train.txt` 和 `yelp2018/test.txt` 已包含在本项目中，可随 Git 或服务器压缩包一起传输。运行时无需访问另一个 R-Rec 目录。
+`yelp2018/`、`amazon-book/`、`gowalla/`、`iFashion/` 各自的 train.txt、test.txt 和 SHA256SUMS 均纳入本项目的 Git，可随 clone、fetch 或 Git bundle 一起传输。运行时无需访问另一个 R-Rec 目录。
 
-数据来自本机原始 R-Rec 的 Yelp2018，逐字节复制，原始文件未修改。`yelp2018/SHA256SUMS` 保存两份文件的 SHA-256 校验值。
+数据来自本机原始 R-Rec 的对应目录，逐字节复制，原始文件未修改。每个目录的 SHA256SUMS 保存两份文件的 SHA-256 校验值；不复制 notebook 缓存或本实验不使用的映射文件。
 
 在 Linux 上可校验：
 
