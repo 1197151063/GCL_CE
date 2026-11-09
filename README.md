@@ -15,7 +15,8 @@
 ├── data/gowalla/
 ├── data/iFashion/
 ├── rrec_experiments/      # 模型、采样、训练、诊断与汇总
-├── run_experiments.sh     # 统一入口，默认四个数据集
+├── run.py                 # Python 统一入口，默认四个数据集
+├── run_experiments.sh     # 简单的服务器启动命令
 ├── run_yelp.sh            # Yelp2018 的便捷入口
 ├── requirements.txt       # 服务器安装入口
 ├── scripts/package_project.py
@@ -23,48 +24,37 @@
 └── runs/                  # 运行时自动生成结果与 checkpoint
 ```
 
-服务器项目目录固定为 `/home/lhb/cyj/GCL_CE/`，使用已有的 `cyj` Python 环境。代码更新到这个目录后，直接运行：
+服务器项目目录为 `/home/lhb/cyj/GCL_CE/`。先激活已有环境，再直接运行 Python：
 
 ```bash
-cd /home/lhb/cyj/GCL_CE
 conda activate cyj
-bash run_experiments.sh --dry-run
-bash run_experiments.sh
+cd /home/lhb/cyj/GCL_CE
+python run.py --dry-run
+python -u run.py --device cuda
 ```
 
-脚本默认使用 CUDA，并执行四个数据集。未激活环境时，如果能找到 Conda，会自动使用 `conda run --no-capture-output -n cyj`。如果 `/home/lhb/cyj/` 本身是虚拟环境，脚本也能直接使用其中的 `bin/python`。脚本不会创建新环境，也不会自动安装或升级依赖。
-
-如现成环境中尚未安装项目依赖，在已激活的 cyj 环境中执行一次：
-
-```bash
-python -m pip install -r requirements.txt
-```
+`run_experiments.sh` 只负责进入项目目录并执行 `python -u run.py --device cuda`，使用你已激活环境中的 python，不做环境探测。`run_yelp.sh` 则额外指定 `--datasets yelp2018`。
 
 后台运行：
 
 ```bash
+conda activate cyj
 cd /home/lhb/cyj/GCL_CE
 mkdir -p runs
-CUDA_VISIBLE_DEVICES=0 nohup bash run_experiments.sh > runs/console.log 2>&1 &
+nohup python -u run.py --device cuda > runs/console.log 2>&1 &
 ```
 
-数据从 `/home/lhb/cyj/GCL_CE/data/` 读取，结果写入 `/home/lhb/cyj/GCL_CE/runs/`。`run_yelp.sh` 同样使用 cyj 环境，仅运行 Yelp2018。所有原有参数均可追加，例如 `--seeds 0`、`--variants A B C D`、`--skip-completed`。显式 `--device cpu` 可覆盖默认 CUDA。
+兼容 Python 3.8，依赖声明为 PyTorch >=1.13、NumPy >=1.21。已有环境能运行时直接启动即可，无需重新建环境。若缺少依赖，在已激活环境中执行 `python -m pip install -r requirements.txt`。
 
-开发机或其他安装位置可显式覆盖项目位置、解释器，不影响服务器默认配置：
-
-```bash
-GCL_PROJECT_DIR="$PWD" PYTHON_BIN=python bash run_experiments.sh --dry-run --device cpu
-```
-
-`GCL_ENV_NAME` 可覆盖环境名，默认 cyj；`PYTHON_BIN` 是显式解释器覆盖，脚本不再自动选择项目内的 .venv 或任意系统 python。
+数据读取项目内的 `data/`，结果写入 `runs/`。所有参数可直接追加到 `python run.py`，例如 `--seeds 0`、`--variants A B C D`、`--skip-completed`。
 
 默认顺序执行 4 个数据集 × 8 组 × 3 个种子，共 96 次训练。也可添加 `--variants A B C D` 先跑四组主实验，或添加 `--seeds 0` 先跑一个种子。结果分别写到 `runs/yelp2018/`、`runs/amazon-book/`、`runs/gowalla/`、`runs/iFashion/`，各数据集单独汇总。
 
 只跑指定数据集：
 
 ```bash
-./run_experiments.sh --datasets amazon-book --device cuda
-./run_experiments.sh --datasets gowalla iFashion --device cuda
+python run.py --datasets amazon-book --device cuda
+python run.py --datasets gowalla iFashion --device cuda
 ```
 
 每个数据集使用显式参数配置，八组对照共享完全相同的设置：
