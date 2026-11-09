@@ -1,0 +1,3 @@
+# Keep raw dataset checksums identical on every platform, including Windows.
+# Original files may contain trailing spaces on users without test positives.
+data/**/*.txt -text -whitespace
