@@ -9,7 +9,7 @@
 项目结构：
 
 ```text
-R-Rec-Sampling-Experiments/
+/home/lhb/cyj/GCL_CE/
 ├── data/yelp2018/          # 每个数据集包含 train.txt、test.txt 和校验值
 ├── data/amazon-book/
 ├── data/gowalla/
@@ -23,32 +23,40 @@ R-Rec-Sampling-Experiments/
 └── runs/                  # 运行时自动生成结果与 checkpoint
 ```
 
-项目通过 Git 维护。提供的 .bundle 包含完整 Git 历史和四个数据集；上传到服务器后直接克隆，得到可继续提交和同步的 Git 仓库。使用 Python 3.10 或更高版本；本地验证使用 3.11：
+服务器项目目录固定为 `/home/lhb/cyj/GCL_CE/`，使用已有的 `cyj` Python 环境。代码更新到这个目录后，直接运行：
 
 ```bash
-git clone R-Rec-Sampling-Experiments.bundle R-Rec-Sampling-Experiments
-cd R-Rec-Sampling-Experiments
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-./run_experiments.sh --dry-run
-./run_experiments.sh --device cuda
+cd /home/lhb/cyj/GCL_CE
+conda activate cyj
+bash run_experiments.sh --dry-run
+bash run_experiments.sh
 ```
 
-如果服务器已有配置好 CUDA PyTorch 的 Conda/虚拟环境，可直接使用该环境，不必新建 `.venv`：
+脚本默认使用 CUDA，并执行四个数据集。未激活环境时，如果能找到 Conda，会自动使用 `conda run --no-capture-output -n cyj`。如果 `/home/lhb/cyj/` 本身是虚拟环境，脚本也能直接使用其中的 `bin/python`。脚本不会创建新环境，也不会自动安装或升级依赖。
+
+如现成环境中尚未安装项目依赖，在已激活的 cyj 环境中执行一次：
 
 ```bash
 python -m pip install -r requirements.txt
-PYTHON_BIN=python ./run_experiments.sh --device cuda
 ```
 
-启动器优先使用 `PYTHON_BIN`，其次使用项目内 `.venv/bin/python`，最后使用当前环境的 `python3`。安装会复用满足要求的已有 PyTorch；GPU 环境需要可用的 CUDA PyTorch。`requirements-tested.txt` 是本地验证环境记录，服务器安装使用 `requirements.txt`。
-
-后台运行示例：
+后台运行：
 
 ```bash
+cd /home/lhb/cyj/GCL_CE
 mkdir -p runs
-CUDA_VISIBLE_DEVICES=0 nohup ./run_experiments.sh --device cuda > runs/console.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0 nohup bash run_experiments.sh > runs/console.log 2>&1 &
 ```
+
+数据从 `/home/lhb/cyj/GCL_CE/data/` 读取，结果写入 `/home/lhb/cyj/GCL_CE/runs/`。`run_yelp.sh` 同样使用 cyj 环境，仅运行 Yelp2018。所有原有参数均可追加，例如 `--seeds 0`、`--variants A B C D`、`--skip-completed`。显式 `--device cpu` 可覆盖默认 CUDA。
+
+开发机或其他安装位置可显式覆盖项目位置、解释器，不影响服务器默认配置：
+
+```bash
+GCL_PROJECT_DIR="$PWD" PYTHON_BIN=python bash run_experiments.sh --dry-run --device cpu
+```
+
+`GCL_ENV_NAME` 可覆盖环境名，默认 cyj；`PYTHON_BIN` 是显式解释器覆盖，脚本不再自动选择项目内的 .venv 或任意系统 python。
 
 默认顺序执行 4 个数据集 × 8 组 × 3 个种子，共 96 次训练。也可添加 `--variants A B C D` 先跑四组主实验，或添加 `--seeds 0` 先跑一个种子。结果分别写到 `runs/yelp2018/`、`runs/amazon-book/`、`runs/gowalla/`、`runs/iFashion/`，各数据集单独汇总。
 
@@ -120,7 +128,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 它默认读取项目内 `data/yelp2018`，也可添加 `--dry-run` 或其他参数。等价的完整命令为：
 
 ```bash
-.venv/bin/python -m rrec_experiments.suite \
+python -m rrec_experiments.suite \
   --data-dir data/yelp2018 \
   --output-dir runs/yelp2018 \
   --seeds 0 1 2 \
@@ -132,7 +140,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 只预览命令、不开始训练：
 
 ```bash
-.venv/bin/python -m rrec_experiments.suite \
+python -m rrec_experiments.suite \
   --data-dir data/yelp2018 \
   --output-dir runs/yelp2018 --dry-run
 ```
@@ -142,7 +150,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 单次运行示例：
 
 ```bash
-.venv/bin/python -m rrec_experiments.train \
+python -m rrec_experiments.train \
   --data-dir data/yelp2018 \
   --output-dir runs/single_C --variant C --seed 0 --device cuda
 ```
@@ -152,7 +160,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 ## 小数据端到端验证
 
 ```bash
-.venv/bin/python -m rrec_experiments.suite \
+python -m rrec_experiments.suite \
   --data-dir tests/fixtures/tiny --output-dir runs/smoke \
   --seeds 0 1 --epochs 2 --batch-size 16 --dim 4 --layers 1 \
   --ks 2 3 --selection-k 2 --eval-every 1 \
@@ -165,8 +173,8 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 如需运行自动测试，先安装测试依赖：
 
 ```bash
-.venv/bin/python -m pip install -e '.[test]'
-.venv/bin/python -m pytest -p no:capture -q
+python -m pip install -e '.[test]'
+python -m pytest -p no:capture -q
 ```
 
 关闭 capture 插件用于绕过本地 Anaconda 的原生 readline 问题，不影响测试内容。服务器正常环境也可直接使用 `python -m pytest -q`。
@@ -176,7 +184,7 @@ CL anchor 先对用户/物品分别去重，候选仍为全体同类型节点，
 在本地仓库提交修改后执行：
 
 ```bash
-python3 scripts/package_project.py
+python scripts/package_project.py
 ```
 
 生成 `dist/R-Rec-Sampling-Experiments-server.tar.gz` 及 SHA-256 文件。包内包含已提交的代码、四个数据集、测试和说明，排除本机 `.venv`、运行输出、缓存及 Git 元数据。`SOURCE_COMMIT` 保存提交号，使服务器无需安装 Git 也能在实验配置中记录代码版本。
@@ -213,7 +221,7 @@ python3 scripts/package_project.py
 完整 suite 自动生成 `summary.csv`、`summary.json`，也可重新执行：
 
 ```bash
-.venv/bin/python -m rrec_experiments.summarize runs/yelp2018
+python -m rrec_experiments.summarize runs/yelp2018
 ```
 
 汇总包括均值、样本标准差和匹配种子的成对差值，拒绝混合划分、训练配置、代码提交、PyTorch 版本等不同的结果。`n=1` 的 std=0 只表示没有重复实验，不代表没有不确定性。缺少预定结果时默认拒绝汇总，可显式用 `--allow-incomplete` 查看部分结果。
@@ -236,4 +244,4 @@ python3 scripts/package_project.py
 
 同时修复了实验运行所必需的负采样、模型/训练/评估接口不一致，并将验证集选择、独立 L2、独立随机流、稳定全节点损失和诊断显式化。因此本项目用于**受控验证机制**，不宣称复现原先未提供的可运行版本及其绝对分数。
 
-所有参数：`.venv/bin/python -m rrec_experiments.train --help`。
+所有参数：`python -m rrec_experiments.train --help`。
