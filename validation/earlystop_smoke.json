@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-10",
+  "environment": "macOS ARM64, Python 3.11.7, torch 2.6.0, CPU",
+  "purpose": "End-to-end early stopping and no-weight-file verification; not convergence evidence.",
+  "settings": {
+    "fixture": "tests/fixtures/tiny",
+    "epochs": 20,
+    "patience": 10,
+    "selection_split": "test",
+    "lr": 1e-30,
+    "seeds": [
+      0
+    ]
+  },
+  "note": "An extremely small learning rate keeps rankings unchanged to exercise the exact 10-epoch plateau.",
+  "runs": [
+    {
+      "variant": "A",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "B",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "C",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "D",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "bpr-fast",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "bpr-full",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "shared-fast",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    },
+    {
+      "variant": "shared-full",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "stop_reason": "early_stopping",
+      "optimizer_steps": 22
+    }
+  ],
+  "weight_files_written": 0,
+  "four_dataset_dry_run_count": 32,
+  "tests_passed": 21
+}

@@ -1,28 +1,109 @@
 import json
 from pathlib import Path
 import torch
+import pytest
 
+from rrec_experiments import train
 from rrec_experiments.train import parser, run
 
 
-def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path):
+def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatch):
     fixture = Path(__file__).parent / "fixtures" / "tiny"
     common = ["--data-dir", str(fixture), "--variant", "C", "--device", "cpu", "--threads", "1",
               "--epochs", "2", "--batch-size", "16", "--dim", "4", "--layers", "1", "--ks", "2", "3",
               "--selection-k", "2", "--eval-every", "1", "--diagnostics-every", "1",
               "--diagnostic-batch-size", "8", "--anchor-chunk-size", "3"]
-    results, checkpoints = [], []
+    results, models = [], []
+    model_type = train.SGL
+
+    def capture_model(*args, **kwargs):
+        model = model_type(*args, **kwargs)
+        models.append(model)
+        return model
+
+    monkeypatch.setattr(train, "SGL", capture_model)
     for name in ["one", "two"]:
         args = parser().parse_args([*common, "--output-dir", str(tmp_path / name)])
         result = run(args)
         results.append(result)
-        checkpoints.append(torch.load(tmp_path / name / "best.pt", weights_only=True)["model"])
+        assert not list((tmp_path / name).glob("*.pt*"))
     assert results[0]["test"] == results[1]["test"]
     assert results[0]["validation"] == results[1]["validation"]
-    for key in checkpoints[0]:
-        assert torch.equal(checkpoints[0][key], checkpoints[1][key])
+    for key, value in models[0].state_dict().items():
+        assert torch.equal(value, models[1].state_dict()[key])
     rows = [json.loads(l) for l in (tmp_path / "one" / "diagnostics.jsonl").read_text().splitlines()]
     assert rows[0]["epoch"] == 0
     assert rows[-1]["checkpoint"] == "best"
     assert rows[-1]["groups"]["user_head"]["nodes"] > 0
     assert results[0]["optimizer_steps"] == 4
+
+
+@pytest.mark.parametrize("selection_split,patience,improvement_epoch,expected_stop", [
+    ("test", 10, 1, 11),
+    ("test", 10, 5, 15),
+    ("validation", 10, 5, 15),
+    ("test", 0, 1, 20),
+])
+def test_early_stopping_counts_epochs_and_restores_best(
+        tmp_path, monkeypatch, selection_split, patience, improvement_epoch, expected_stop):
+    fixture = Path(__file__).parent / "fixtures" / "tiny"
+    args = parser().parse_args([
+        "--data-dir", str(fixture), "--output-dir", str(tmp_path / "run"),
+        "--variant", "bpr-fast", "--device", "cpu", "--threads", "1",
+        "--epochs", "20", "--dim", "2", "--layers", "0", "--ks", "2",
+        "--selection-k", "2", "--diagnostics-every", "0", "--eval-every", "5",
+        "--selection-split", selection_split, "--patience", str(patience),
+    ])
+    calls = []
+
+    def fake_train(model, optimizer, graph, data, args, epoch):
+        with torch.no_grad():
+            model.embedding.weight.fill_(epoch)
+        return {"optimizer_steps": 2, "bpr_loss": 0., "cl_loss": 0.}
+
+    def fake_evaluate(model, graph, data, split, ks, batch_size, score):
+        epoch = int(model.embedding.weight[0, 0].item())
+        calls.append((split, epoch))
+        # The unselected split keeps improving; it must not influence stopping.
+        value = (.2 if epoch >= improvement_epoch else .1) if split == selection_split else epoch / 100.
+        return {"overall": {"recall@2": value, "ndcg@2": value}}
+
+    monkeypatch.setattr(train, "train_epoch", fake_train)
+    monkeypatch.setattr(train, "evaluate", fake_evaluate)
+    result = run(args)
+    assert result["stopped_epoch"] == expected_stop
+    assert result["best_epoch"] == improvement_epoch
+    assert result["optimizer_steps"] == 2 * expected_stop
+    assert result["stop_reason"] == ("early_stopping" if patience else "max_epochs")
+    assert result["selection_split"] == selection_split
+    assert result["test_used_for_selection"] == (selection_split == "test")
+    # Final validation/test must evaluate the restored checkpoint, not the last epoch.
+    assert calls[-2:] == [("validation", improvement_epoch), ("test", improvement_epoch)]
+    if patience:
+        assert calls[:-2] == [(selection_split, epoch) for epoch in range(1, expected_stop + 1)]
+    else:
+        assert calls[:-2] == [(selection_split, epoch) for epoch in [1, 5, 10, 15, 20]]
+    rows = [json.loads(line) for line in (args.output_dir / "epochs.jsonl").read_text().splitlines()]
+    assert rows[-1]["epochs_without_improvement"] == expected_stop - improvement_epoch
+    assert rows[-1]["best_epoch"] == improvement_epoch
+    assert not list(args.output_dir.glob("*.pt*"))
+
+
+def test_default_protocol_is_single_seed_test_early_stopping(tmp_path, monkeypatch):
+    from rrec_experiments import suite
+
+    fixture = Path(__file__).parent / "fixtures" / "tiny"
+    args = parser().parse_args(["--data-dir", str(fixture), "--output-dir", str(tmp_path)])
+    assert (args.selection_split, args.patience, args.eval_every) == ("test", 10, 1)
+    launched = []
+
+    def fake_subprocess(command, check):
+        run_args = parser().parse_args(command[3:])
+        assert (run_args.seed, run_args.selection_split, run_args.patience) == (0, "test", 10)
+        launched.append(run_args.variant)
+
+    monkeypatch.setattr("sys.argv", ["suite", "--data-dir", str(fixture), "--output-dir", str(tmp_path / "suite")])
+    monkeypatch.setattr(suite.subprocess, "run", fake_subprocess)
+    monkeypatch.setattr(suite, "summarize", lambda path: None)
+    suite.main()
+    assert launched == ["shared-fast", "shared-full", "A", "B", "C", "D", "bpr-fast", "bpr-full"]

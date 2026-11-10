@@ -16,7 +16,7 @@ def main():
     p.add_argument("--data-dir", type=Path, required=True)
     p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom")
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2])
+    p.add_argument("--seeds", type=int, nargs="+", default=[0])
     p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["shared-fast", "shared-full", "A", "B", "C", "D", "bpr-fast", "bpr-full"])
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-completed", action="store_true")

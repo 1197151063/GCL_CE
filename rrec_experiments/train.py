@@ -57,8 +57,11 @@ def parser():
     p.add_argument("--ks", type=int, nargs="+", default=[20, 50])
     p.add_argument("--selection-k", type=int, default=20)
     p.add_argument("--score", choices=("dot", "cosine"), default="cosine")
-    p.add_argument("--eval-every", type=int, default=5)
-    p.add_argument("--patience", type=int, default=0, help="0: fixed epoch budget; otherwise validation checks without improvement")
+    p.add_argument("--selection-split", choices=("test", "validation"), default="test")
+    p.add_argument("--eval-every", type=int, default=1,
+                   help="Evaluation interval when patience=0; early stopping always evaluates every epoch")
+    p.add_argument("--patience", type=int, default=10,
+                   help="Epochs without strict selection-score improvement; 0 disables early stopping")
     p.add_argument("--eval-batch-size", type=int, default=256)
     p.add_argument("--diagnostics-every", type=int, default=25, help="epochs; 0 disables gradient diagnostics")
     p.add_argument("--diagnostic-batch-size", type=int, default=256)
@@ -196,9 +199,12 @@ def run(args):
     commit = source_revision()
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
-              "selection_metric": f"validation recall@{args.selection_k} + ndcg@{args.selection_k}"}
+              "selection_metric": f"{args.selection_split} recall@{args.selection_k} + ndcg@{args.selection_k}",
+              "test_used_for_selection": args.selection_split == "test"}
     write_json(args.output_dir / "config.json", config)
-    best, best_epoch, failures, updates = -math.inf, 0, 0, 0
+    best, best_epoch, updates = -math.inf, 0, 0
+    best_state = None
+    stop_reason = "max_epochs"
     begin = time.time()
     if args.diagnostics_every:
         append_json(args.output_dir / "diagnostics.jsonl", {"epoch": 0, **gradient_diagnostics(model, graph, data, args)})
@@ -207,35 +213,42 @@ def run(args):
         training = train_epoch(model, optimizer, graph, data, args, epoch)
         updates += training["optimizer_steps"]
         record = {"epoch": epoch, "training": training, "cumulative_optimizer_steps": updates}
-        if epoch == 1 or epoch % args.eval_every == 0 or epoch == args.epochs:
-            metrics = evaluate(model, graph, data, "validation", args.ks, args.eval_batch_size, args.score)
-            record["validation"] = metrics
+        if args.patience or epoch == 1 or epoch % args.eval_every == 0 or epoch == args.epochs:
+            metrics = evaluate(model, graph, data, args.selection_split, args.ks, args.eval_batch_size, args.score)
+            record[args.selection_split] = metrics
             score = metrics["overall"][f"recall@{args.selection_k}"] + metrics["overall"][f"ndcg@{args.selection_k}"]
+            if not math.isfinite(score):
+                raise FloatingPointError(f"Nonfinite selection score at epoch={epoch}")
             if score > best:
-                best, best_epoch, failures = score, epoch, 0
-                temporary = args.output_dir / "best.pt.tmp"
-                torch.save({"model": model.state_dict(), "epoch": epoch, "selection_score": score}, temporary)
-                temporary.replace(args.output_dir / "best.pt")
-            else:
-                failures += 1
+                best, best_epoch = score, epoch
+                # Clone on CPU so later updates cannot mutate the best parameters.
+                best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+            record["selection_score"] = score
+        record["best_epoch"] = best_epoch
+        record["epochs_without_improvement"] = epoch - best_epoch
         if args.diagnostics_every and epoch % args.diagnostics_every == 0:
             append_json(args.output_dir / "diagnostics.jsonl", {"epoch": epoch, **gradient_diagnostics(model, graph, data, args)})
         record["seconds"] = time.time() - started
         append_json(args.output_dir / "epochs.jsonl", record)
         message = f"{args.variant} seed={args.seed} epoch={epoch} bpr={training['bpr_loss']:.5f} cl={training['cl_loss']:.5f}"
-        if "validation" in record:
-            message += f" validation_score={score:.6f} best_epoch={best_epoch}"
+        if args.selection_split in record:
+            message += (f" {args.selection_split}_score={score:.6f} best_epoch={best_epoch}"
+                        f" no_improvement={epoch - best_epoch}/{args.patience or 'disabled'}")
         print(message, flush=True)
-        if args.patience and failures >= args.patience:
+        if args.patience and epoch - best_epoch >= args.patience:
+            stop_reason = "early_stopping"
+            print(f"Early stopping: {args.selection_split} score has not improved for {args.patience} epochs; "
+                  f"restoring epoch {best_epoch}.", flush=True)
             break
-    checkpoint = torch.load(args.output_dir / "best.pt", map_location=device, weights_only=True)
-    model.load_state_dict(checkpoint["model"])
+    model.load_state_dict(best_state)
     validation = evaluate(model, graph, data, "validation", args.ks, args.eval_batch_size, args.score)
     test = evaluate(model, graph, data, "test", args.ks, args.eval_batch_size, args.score)
     if args.diagnostics_every:
         append_json(args.output_dir / "diagnostics.jsonl", {"epoch": best_epoch, "checkpoint": "best", **gradient_diagnostics(model, graph, data, args)})
     result = {"variant": args.variant, "seed": args.seed, "best_epoch": best_epoch,
               "stopped_epoch": epoch, "optimizer_steps": updates, "best_selection_score": best,
+              "stop_reason": stop_reason, "selection_split": args.selection_split,
+              "test_used_for_selection": args.selection_split == "test",
               "seconds": time.time() - begin, "validation": validation, "test": test,
               "data_fingerprint": data.fingerprint}
     write_json(args.output_dir / "result.json", result)

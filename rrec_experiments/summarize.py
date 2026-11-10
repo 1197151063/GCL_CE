@@ -30,13 +30,14 @@ def summarize(directory, allow_incomplete=False):
     groups, records, reference = {}, {}, None
     compare_fields = ("dataset", "data", "epochs", "batch_size", "dim", "layers", "init_std", "lr", "decay",
                       "temperature", "drop_ratio", "self_loops", "l2_source", "ssl_side", "score",
-                      "split_seed", "validation_ratio", "ks", "selection_k", "eval_every", "patience",
+                      "split_seed", "validation_ratio", "ks", "selection_k", "selection_split", "eval_every", "patience",
                       "strict_determinism", "repository_commit", "torch_version")
     cl_weights = set()
     for path in paths:
         result = json.loads(path.read_text())
         config = json.loads((path.parent / "config.json").read_text())
         config.setdefault("dataset", "custom")
+        config.setdefault("selection_split", "validation")
         signature = {key: config[key] for key in compare_fields}
         if reference is not None and signature != reference:
             raise ValueError(f"Cannot pool runs with different controlled settings: {path}")
@@ -48,7 +49,8 @@ def summarize(directory, allow_incomplete=False):
             raise ValueError(f"Duplicate variant/seed: {key}")
         records[key] = result
         numeric = flatten({"validation": result["validation"], "test": result["test"],
-                           "best_epoch": result["best_epoch"], "optimizer_steps": result["optimizer_steps"]})
+                           "best_epoch": result["best_epoch"], "stopped_epoch": result["stopped_epoch"],
+                           "optimizer_steps": result["optimizer_steps"]})
         diagnostics_path = path.parent / "diagnostics.jsonl"
         if diagnostics_path.exists():
             diagnostics = [json.loads(line) for line in diagnostics_path.read_text().splitlines()]
@@ -77,10 +79,13 @@ def summarize(directory, allow_incomplete=False):
             pair[metric] = {"mean_delta": statistics.mean(deltas), "std_delta": statistics.stdev(deltas) if len(deltas) > 1 else 0.,
                             "n": len(seeds), "seeds": seeds}
         pairs[f"{left}_minus_{right}"] = pair
+    test_selection = reference["selection_split"] == "test"
     output = {"variants": summary, "paired_test_differences": pairs,
+              "selection_split": reference["selection_split"], "test_used_for_selection": test_selection,
               "notes": ["std is sample standard deviation; n=1 has no uncertainty estimate.",
                         "Paired differences use matching training seeds; they do not establish statistical significance.",
-                        "Test comparisons are for reporting; do not select hyperparameters on these results."]}
+                        ("Test data were used for checkpoint selection and early stopping; test scores are not an independent held-out estimate."
+                         if test_selection else "Test comparisons are for reporting; do not select hyperparameters on these results.")]}
     (directory / "summary.json").write_text(json.dumps(output, indent=2, allow_nan=False) + "\n")
     columns = sorted({key for item in summary.values() for key in item})
     with (directory / "summary.csv").open("w", newline="") as handle:
