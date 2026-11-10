@@ -32,7 +32,7 @@ def main():
     root = Path(__file__).resolve().parent.parent
     p = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
                                 epilog="Other options, e.g. --seeds, --variants, --device, are forwarded to every suite.")
-    p.add_argument("--datasets", choices=["all", *PRESETS], nargs="+", default=["all"])
+    p.add_argument("--datasets", choices=["all", *PRESETS], nargs="+", default=["yelp2018"])
     p.add_argument("--data-root", type=Path, default=root / "data")
     p.add_argument("--output-root", type=Path, default=root / "runs")
     p.add_argument("--dry-run", action="store_true")

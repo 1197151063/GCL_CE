@@ -15,7 +15,7 @@
 ├── data/gowalla/
 ├── data/iFashion/
 ├── rrec_experiments/      # 模型、采样、训练、诊断与汇总
-├── run.py                 # Python 统一入口，默认四个数据集
+├── run.py                 # Python 统一入口，默认只跑 Yelp2018
 ├── run_experiments.sh     # 简单的服务器启动命令
 ├── run_yelp.sh            # Yelp2018 的便捷入口
 ├── requirements.txt       # 服务器安装入口
@@ -48,7 +48,7 @@ nohup python -u run.py --device cuda > runs/console.log 2>&1 &
 
 数据读取项目内的 `data/`，结果写入 `runs/`。所有参数可直接追加到 `python run.py`，例如 `--seeds 0`、`--variants A B C D`、`--skip-completed`。
 
-默认顺序执行 4 个数据集 × 8 组 × 1 个种子（seed=0），共 32 次训练。每轮检查测试集 `Recall@20 + NDCG@20`，连续 10 个 epoch 没有严格提升就恢复最好模型、保存结果并进入下一组，最多 1000 轮。也可添加 `--variants A B C D` 先跑四组主实验。结果分别写到 `runs/yelp2018/`、`runs/amazon-book/`、`runs/gowalla/`、`runs/iFashion/`，各数据集单独汇总。
+当前默认只跑 Yelp2018，先观察采样与头尾节点的现象：8 组 × 1 个种子（seed=0），共 8 次训练。每轮检查测试集 `Recall@20 + NDCG@20`，连续 10 个 epoch 没有严格提升就恢复最好模型、保存结果并进入下一组，最多 1000 轮。也可添加 `--variants A B C D` 先跑四组主实验。结果默认写到 `runs/yelp2018/`；其他三个数据集保留在项目内，显式添加 `--datasets all` 才会运行全部四个数据集，各自单独汇总。
 
 已有进程不会自动采用新设置。终止旧进程、同步代码后，换新输出目录启动，保留此前日志：
 
