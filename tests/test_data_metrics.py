@@ -2,15 +2,30 @@ import math
 import pytest
 import torch
 
-from rrec_experiments.data import RecData, edge_codes, groups_by_degree
+from rrec_experiments.data import RecData, edge_codes, groups_by_degree, read_edges
 from rrec_experiments.metrics import evaluate
 from rrec_experiments.sampling import contains
 
 
-def test_validation_split_is_disjoint_and_fixed(tiny_data):
-    assert not contains(tiny_data.train_codes, edge_codes(tiny_data.validation, tiny_data.num_items)).any()
+def test_full_training_data_are_kept_and_disjoint_from_test(tiny_data):
+    from pathlib import Path
+    raw_train = read_edges(Path(__file__).parent / "fixtures" / "tiny" / "train.txt")
+    assert torch.equal(tiny_data.train_codes, edge_codes(raw_train, tiny_data.num_items).sort().values)
+    assert tiny_data.user_degree.sum() == raw_train.size(1)
+    assert not contains(tiny_data.train_codes, edge_codes(tiny_data.test, tiny_data.num_items)).any()
     assert (tiny_data.user_degree > 0).all()
-    assert tiny_data.validation.size(1) == tiny_data.num_users
+    assert not hasattr(tiny_data, "validation")
+
+
+def test_valid_file_is_not_read_or_used_for_training_or_fingerprint(tmp_path):
+    (tmp_path / "train.txt").write_text("0 0\n1 1\n")
+    (tmp_path / "test.txt").write_text("0 1\n1 0\n")
+    before = RecData.load(tmp_path)
+    (tmp_path / "valid.txt").write_text("not a dataset; must not be read\n")
+    after = RecData.load(tmp_path)
+    assert after.num_edges == 2
+    assert torch.equal(before.train, after.train)
+    assert before.fingerprint == after.fingerprint
 
 
 def test_overlapping_input_is_rejected(tmp_path):
@@ -29,7 +44,6 @@ def test_groups_do_not_confuse_cold_with_tail():
 def test_ranking_masks_known_edges_and_uses_each_users_own_ndcg_denominator():
     data = RecData(
         train=torch.tensor([[0, 1], [0, 1]]),
-        validation=torch.tensor([[0, 1], [1, 0]]),
         test=torch.tensor([[0, 0, 1], [2, 3, 3]]),
         num_users=2, num_items=5,
         user_degree=torch.tensor([1, 1]), item_degree=torch.tensor([1, 1, 0, 0, 0]),

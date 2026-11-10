@@ -35,8 +35,8 @@ def parser():
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--variant", choices=VARIANTS, default="A")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--split-seed", type=int, default=20261109)
-    p.add_argument("--validation-ratio", type=float, default=.1)
+    p.add_argument("--split-seed", type=int, default=20261109,
+                   help="Fixed diagnostic probe seed only; training data are not split")
     p.add_argument("--epochs", type=int, default=1000)
     p.add_argument("--batch-size", type=int, default=2048)
     p.add_argument("--dim", type=int, default=64)
@@ -57,7 +57,6 @@ def parser():
     p.add_argument("--ks", type=int, nargs="+", default=[20, 50])
     p.add_argument("--selection-k", type=int, default=20)
     p.add_argument("--score", choices=("dot", "cosine"), default="cosine")
-    p.add_argument("--selection-split", choices=("test", "validation"), default="test")
     p.add_argument("--eval-every", type=int, default=1,
                    help="Evaluation interval when patience=0; early stopping always evaluates every epoch")
     p.add_argument("--patience", type=int, default=10,
@@ -190,7 +189,7 @@ def run(args):
         torch.cuda.manual_seed_all(args.seed)
     torch.use_deterministic_algorithms(args.strict_determinism)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu") if args.device == "auto" else torch.device(args.device)
-    data = RecData.load(args.data_dir, args.validation_ratio, args.split_seed)
+    data = RecData.load(args.data_dir)
     if max(args.ks) > data.num_items:
         raise ValueError("max(ks) exceeds number of dataset items")
     model = SGL(data.num_users, data.num_items, args.dim, args.layers, args.init_std).to(device)
@@ -199,8 +198,9 @@ def run(args):
     commit = source_revision()
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
-              "selection_metric": f"{args.selection_split} recall@{args.selection_k} + ndcg@{args.selection_k}",
-              "test_used_for_selection": args.selection_split == "test"}
+              "data_protocol": "full_train_test_v1", "selection_split": "test",
+              "selection_metric": f"test recall@{args.selection_k} + ndcg@{args.selection_k}",
+              "test_used_for_selection": True}
     write_json(args.output_dir / "config.json", config)
     best, best_epoch, updates = -math.inf, 0, 0
     best_state = None
@@ -214,8 +214,8 @@ def run(args):
         updates += training["optimizer_steps"]
         record = {"epoch": epoch, "training": training, "cumulative_optimizer_steps": updates}
         if args.patience or epoch == 1 or epoch % args.eval_every == 0 or epoch == args.epochs:
-            metrics = evaluate(model, graph, data, args.selection_split, args.ks, args.eval_batch_size, args.score)
-            record[args.selection_split] = metrics
+            metrics = evaluate(model, graph, data, "test", args.ks, args.eval_batch_size, args.score)
+            record["test"] = metrics
             score = metrics["overall"][f"recall@{args.selection_k}"] + metrics["overall"][f"ndcg@{args.selection_k}"]
             if not math.isfinite(score):
                 raise FloatingPointError(f"Nonfinite selection score at epoch={epoch}")
@@ -231,25 +231,24 @@ def run(args):
         record["seconds"] = time.time() - started
         append_json(args.output_dir / "epochs.jsonl", record)
         message = f"{args.variant} seed={args.seed} epoch={epoch} bpr={training['bpr_loss']:.5f} cl={training['cl_loss']:.5f}"
-        if args.selection_split in record:
-            message += (f" {args.selection_split}_score={score:.6f} best_epoch={best_epoch}"
+        if "test" in record:
+            message += (f" test_score={score:.6f} best_epoch={best_epoch}"
                         f" no_improvement={epoch - best_epoch}/{args.patience or 'disabled'}")
         print(message, flush=True)
         if args.patience and epoch - best_epoch >= args.patience:
             stop_reason = "early_stopping"
-            print(f"Early stopping: {args.selection_split} score has not improved for {args.patience} epochs; "
+            print(f"Early stopping: test score has not improved for {args.patience} epochs; "
                   f"restoring epoch {best_epoch}.", flush=True)
             break
     model.load_state_dict(best_state)
-    validation = evaluate(model, graph, data, "validation", args.ks, args.eval_batch_size, args.score)
     test = evaluate(model, graph, data, "test", args.ks, args.eval_batch_size, args.score)
     if args.diagnostics_every:
         append_json(args.output_dir / "diagnostics.jsonl", {"epoch": best_epoch, "checkpoint": "best", **gradient_diagnostics(model, graph, data, args)})
     result = {"variant": args.variant, "seed": args.seed, "best_epoch": best_epoch,
               "stopped_epoch": epoch, "optimizer_steps": updates, "best_selection_score": best,
-              "stop_reason": stop_reason, "selection_split": args.selection_split,
-              "test_used_for_selection": args.selection_split == "test",
-              "seconds": time.time() - begin, "validation": validation, "test": test,
+              "stop_reason": stop_reason, "selection_split": "test", "data_protocol": "full_train_test_v1",
+              "test_used_for_selection": True,
+              "seconds": time.time() - begin, "test": test,
               "data_fingerprint": data.fingerprint}
     write_json(args.output_dir / "result.json", result)
     print(json.dumps({"completed": str(args.output_dir), "test": test["overall"]}), flush=True)

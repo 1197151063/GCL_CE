@@ -1,0 +1,80 @@
+{
+  "date": "2026-11-10",
+  "data_protocol": "full_train_test_v1",
+  "tests_passed": 21,
+  "environment": "macOS ARM64, Python 3.11.7, torch 2.6.0, CPU",
+  "purpose": "Test-only evaluation with complete train.txt, exact early stopping, diagnostics and aggregation.",
+  "smoke_settings": {
+    "fixture": "tests/fixtures/tiny",
+    "train_edges": 36,
+    "epochs": 20,
+    "lr": 1e-30,
+    "patience": 10
+  },
+  "smoke_runs": [
+    {
+      "variant": "A",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "B",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "C",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "D",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "bpr-fast",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "bpr-full",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "shared-fast",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "shared-full",
+      "seed": 0,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    }
+  ],
+  "weight_files_written": 0,
+  "real_yelp_data_check": {
+    "train_edges": 1237259,
+    "test_edges": 324147,
+    "all_raw_train_pairs_retained": true,
+    "fingerprint": "b02dd44778d2686c60ade32017c5492cafa22294745f711b241965b8db47aeaa"
+  },
+  "limits": "Real Yelp checked for data retention only in this change; no full training or CUDA validation."
+}

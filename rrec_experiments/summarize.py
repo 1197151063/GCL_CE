@@ -30,7 +30,7 @@ def summarize(directory, allow_incomplete=False):
     groups, records, reference = {}, {}, None
     compare_fields = ("dataset", "data", "epochs", "batch_size", "dim", "layers", "init_std", "lr", "decay",
                       "temperature", "drop_ratio", "self_loops", "l2_source", "ssl_side", "score",
-                      "split_seed", "validation_ratio", "ks", "selection_k", "selection_split", "eval_every", "patience",
+                      "split_seed", "data_protocol", "ks", "selection_k", "selection_split", "eval_every", "patience",
                       "strict_determinism", "repository_commit", "torch_version")
     cl_weights = set()
     for path in paths:
@@ -38,6 +38,7 @@ def summarize(directory, allow_incomplete=False):
         config = json.loads((path.parent / "config.json").read_text())
         config.setdefault("dataset", "custom")
         config.setdefault("selection_split", "validation")
+        config.setdefault("data_protocol", "legacy_validation_holdout")
         signature = {key: config[key] for key in compare_fields}
         if reference is not None and signature != reference:
             raise ValueError(f"Cannot pool runs with different controlled settings: {path}")
@@ -48,7 +49,7 @@ def summarize(directory, allow_incomplete=False):
         if key in records:
             raise ValueError(f"Duplicate variant/seed: {key}")
         records[key] = result
-        numeric = flatten({"validation": result["validation"], "test": result["test"],
+        numeric = flatten({**({"validation": result["validation"]} if "validation" in result else {}), "test": result["test"],
                            "best_epoch": result["best_epoch"], "stopped_epoch": result["stopped_epoch"],
                            "optimizer_steps": result["optimizer_steps"]})
         diagnostics_path = path.parent / "diagnostics.jsonl"
@@ -82,6 +83,7 @@ def summarize(directory, allow_incomplete=False):
     test_selection = reference["selection_split"] == "test"
     output = {"variants": summary, "paired_test_differences": pairs,
               "selection_split": reference["selection_split"], "test_used_for_selection": test_selection,
+              "data_protocol": reference["data_protocol"],
               "notes": ["std is sample standard deviation; n=1 has no uncertainty estimate.",
                         "Paired differences use matching training seeds; they do not establish statistical significance.",
                         ("Test data were used for checkpoint selection and early stopping; test scores are not an independent held-out estimate."

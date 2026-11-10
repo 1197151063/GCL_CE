@@ -6,9 +6,9 @@ from .sampling import contains
 
 
 @torch.no_grad()
-def evaluate(model, graph, data, split="validation", ks=(20, 50), batch_size=256, score="dot"):
-    if split not in ("validation", "test"):
-        raise ValueError("split must be validation or test")
+def evaluate(model, graph, data, split="test", ks=(20, 50), batch_size=256, score="dot"):
+    if split != "test":
+        raise ValueError("Only test evaluation is supported")
     if min(ks) <= 0 or max(ks) > data.num_items:
         raise ValueError("Ranking K must be between 1 and number of items")
     model.eval()
@@ -16,8 +16,8 @@ def evaluate(model, graph, data, split="validation", ks=(20, 50), batch_size=256
     eu, ei = representation[:data.num_users], representation[data.num_users:]
     if score == "cosine":
         eu, ei = F.normalize(eu, dim=-1), F.normalize(ei, dim=-1)
-    targets = getattr(data, split)
-    excluded = data.train if split == "validation" else torch.cat([data.train, data.validation], 1)
+    targets = data.test
+    excluded = data.train
     excluded = excluded[:, torch.argsort(edge_codes(excluded, data.num_items))]
     offsets = offsets_for(excluded, data.num_users)
     target_codes = edge_codes(targets, data.num_items).to(eu.device)

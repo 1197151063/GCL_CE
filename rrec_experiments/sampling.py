@@ -23,7 +23,7 @@ def epoch_indices(data, sampler: str, seed: int, epoch: int, stream: str):
 
 
 def negative_items(data, users, rng):
-    """Uniform unseen train items; validation/test labels are never consulted."""
+    """Uniform unseen train items; test labels are never consulted."""
     users = users.cpu()
     if (data.user_degree[users] >= data.num_items).any():
         raise ValueError("A user has no available training-negative item.")
