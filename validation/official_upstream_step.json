@@ -1,0 +1,28 @@
+{
+  "upstream_source_sha256": "91f9a3a71145d02f3267d07d4c23796e9f1182ccd2c545b12b272cc8177a5641",
+  "executed_upstream_methods": [
+    "_LightGCN.forward",
+    "_LightGCN._forward_gcn",
+    "SGL.train_model"
+  ],
+  "boundary": "Same initial weights, sampled triples and normalized augmented graphs; one CPU minibatch.",
+  "embedding_gradient_max_absolute_error": 6.109476089477539e-07,
+  "adam_updated_parameter_max_absolute_error": 0.0,
+  "current_training_log": {
+    "bpr_loss": 0.6545390023125542,
+    "l2_loss": 7.764568241933982e-05,
+    "cl_loss": 0.17102024290296766,
+    "user_unique_bpr": 8.0,
+    "user_unique_cl": 8.0,
+    "user_head_bpr_share": 0.1111111119389534,
+    "user_head_cl_anchor_share": 0.1111111119389534,
+    "item_unique_bpr": 18.0,
+    "item_unique_cl": 18.0,
+    "item_head_bpr_share": 0.3055555522441864,
+    "item_head_cl_anchor_share": 0.3055555522441864,
+    "optimizer_steps": 1,
+    "bpr_sample_fingerprint": "f13b23d71ddec4b0a27c14520fc4e0b01ed6928bd6b453f75ce03e5c9712aa5c",
+    "cl_sample_fingerprint": "f13b23d71ddec4b0a27c14520fc4e0b01ed6928bd6b453f75ce03e5c9712aa5c",
+    "l2_sample_fingerprint": "f13b23d71ddec4b0a27c14520fc4e0b01ed6928bd6b453f75ce03e5c9712aa5c"
+  }
+}

@@ -12,12 +12,16 @@ def generator(seed: int, *parts) -> torch.Generator:
 
 
 def epoch_indices(data, sampler: str, seed: int, epoch: int, stream: str):
-    """Fast: random permutation. Full: inverse-user-degree weighted replacement."""
+    """Fast: permutation; Full: 1/(degree+1); user: official uniform-user law."""
     rng = generator(seed, epoch, stream)
     if sampler == "fast":
         return torch.randperm(data.num_edges, generator=rng)
     if sampler == "full":
         weights = 1.0 / (data.user_degree[data.train[0]].double() + 1.0)
+        return torch.multinomial(weights, data.num_edges, replacement=True, generator=rng)
+    if sampler == "user":
+        # Each user's d edges sum to weight 1, then pick its positive uniformly.
+        weights = 1.0 / data.user_degree[data.train[0]].double()
         return torch.multinomial(weights, data.num_edges, replacement=True, generator=rng)
     raise ValueError(f"Unknown sampler: {sampler}")
 
@@ -47,17 +51,21 @@ def contains(sorted_values, queries):
     )
 
 
-def batch_occupancy(data, bpr_edges, cl_edges):
+def batch_occupancy(data, bpr_edges, cl_edges, anchor_mode="repeated"):
     result = {}
     for side, groups in [(0, data.user_group), (1, data.item_group)]:
         name = "user" if side == 0 else "item"
         ids = bpr_edges[side]
-        anchors = torch.unique(cl_edges[side])
+        anchors = cl_edges[side] if anchor_mode == "repeated" else torch.unique(cl_edges[side])
         result[f"{name}_unique_bpr"] = float(ids.unique().numel())
-        result[f"{name}_unique_cl"] = float(anchors.numel())
+        result[f"{name}_unique_cl"] = float(cl_edges[side].unique().numel())
         result[f"{name}_head_bpr_share"] = float((groups[ids] == 0).float().mean())
         result[f"{name}_head_cl_anchor_share"] = float((groups[anchors] == 0).float().mean())
     return result
+
+
+def sample_fingerprint(indices):
+    return hashlib.sha256(indices.contiguous().numpy().tobytes()).hexdigest()
 
 
 def num_batches(data, batch_size):

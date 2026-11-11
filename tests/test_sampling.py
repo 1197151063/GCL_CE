@@ -28,3 +28,25 @@ def test_negatives_exclude_training_positives_only(tiny_data):
     assert not contains(tiny_data.train_codes, codes).any()
     test_codes = tiny_data.test[0] * tiny_data.num_items + tiny_data.test[1]
     assert contains(test_codes, codes).any(), "Held-out labels must not filter training negatives"
+
+
+def test_official_sampling_is_uniform_over_active_users(tiny_data):
+    samples = torch.cat([epoch_indices(tiny_data, "user", 2021, epoch, "official") for epoch in range(500)])
+    frequencies = torch.bincount(tiny_data.train[0, samples], minlength=tiny_data.num_users).double() / samples.numel()
+    expected = (tiny_data.user_degree > 0).double()
+    expected /= expected.sum()
+    assert torch.allclose(frequencies, expected, atol=.015, rtol=0)
+
+
+def test_fast_full_change_only_bpr_stream_with_default_settings(tiny_data, tmp_path):
+    from rrec_experiments.train import parser, epoch_samples
+    samples = {}
+    for variant in ["official", "fast", "full"]:
+        args = parser().parse_args(["--data-dir", str(tmp_path), "--output-dir", str(tmp_path), "--variant", variant])
+        samples[variant] = epoch_samples(tiny_data, args, 3)
+    reference = samples["official"][0]
+    for variant, (bpr, cl, l2) in samples.items():
+        assert torch.equal(cl, reference)
+        assert torch.equal(l2, reference)
+        assert torch.equal(bpr, reference) == (variant == "official")
+    assert not torch.equal(samples["fast"][0], samples["full"][0])

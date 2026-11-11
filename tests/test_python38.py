@@ -7,7 +7,7 @@ import pytest
 from rrec_experiments.train import parser
 
 
-@pytest.mark.parametrize("flags,expected", [([], True), (["--self-loops"], True), (["--no-self-loops"], False)])
+@pytest.mark.parametrize("flags,expected", [([], False), (["--self-loops"], True), (["--no-self-loops"], False)])
 def test_self_loop_flags_without_python39_boolean_action(monkeypatch, tmp_path, flags, expected):
     monkeypatch.delattr(argparse, "BooleanOptionalAction", raising=False)
     args = parser().parse_args(["--data-dir", str(tmp_path), "--output-dir", str(tmp_path / "run"), *flags])

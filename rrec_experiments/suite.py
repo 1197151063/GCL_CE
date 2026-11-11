@@ -5,19 +5,20 @@ import shlex
 import subprocess
 import sys
 
-from .train import VARIANTS, jsonable, parser as training_parser, validate, write_json
+from .train import (VARIANTS, EXPERIMENT_PROTOCOL, jsonable, parser as training_parser,
+                    validate, write_json, source_fingerprint)
 from .summarize import summarize
 from .presets import PRESETS
 
 
 def main():
-    p = argparse.ArgumentParser(description="Run shared-batch baselines, 2x2 sampling matrix and no-CL controls", allow_abbrev=False,
+    p = argparse.ArgumentParser(description="Official SGL reference and BPR-only sampling interventions", allow_abbrev=False,
                                 epilog="Other training options are forwarded; use train --help to list them.")
     p.add_argument("--data-dir", type=Path, required=True)
     p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom")
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument("--seeds", type=int, nargs="+", default=[0])
-    p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["shared-fast", "shared-full", "A", "B", "C", "D", "bpr-fast", "bpr-full"])
+    p.add_argument("--seeds", type=int, nargs="+", default=[2021])
+    p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["official", "fast", "full"])
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-completed", action="store_true")
     args, extra = p.parse_known_args()
@@ -36,12 +37,14 @@ def main():
                        "--variant", variant, "--seed", str(seed), *extra]
             run_args = training_parser().parse_args(options)
             validate(run_args)
-            if not VARIANTS[variant][3]:
+            if not VARIANTS[variant][1]:
                 run_args.ssl_weight = 0.
             commands.append({"variant": variant, "seed": seed, "output_dir": str(output),
                              "command": [sys.executable, "-m", "rrec_experiments.train", *options]})
             parsed.append(run_args)
-    plan = {"runs": commands, "data_dir": str(args.data_dir.resolve())}
+    code_fingerprint = source_fingerprint()
+    plan = {"runs": commands, "data_dir": str(args.data_dir.resolve()),
+            "experiment_protocol": EXPERIMENT_PROTOCOL, "source_fingerprint": code_fingerprint}
     if args.dry_run:
         for item in commands:
             print(shlex.join(item["command"]))
@@ -52,16 +55,22 @@ def main():
         p.error("Existing suite plan differs; use a new output directory")
     write_json(plan_path, plan)
     for item, run_args in zip(commands, parsed):
+        if source_fingerprint() != code_fingerprint:
+            raise RuntimeError("Source code changed during the suite; stopping to avoid mixed-version results. Use a new output directory.")
         output = Path(item["output_dir"])
         if args.skip_completed and (output / "result.json").exists():
             stored = json.loads((output / "config.json").read_text())
             expected = jsonable(vars(run_args))
-            if any(stored.get(key) != value for key, value in expected.items()):
+            if (stored.get("source_fingerprint") != code_fingerprint or
+                    stored.get("experiment_protocol") != EXPERIMENT_PROTOCOL or
+                    any(stored.get(key) != value for key, value in expected.items())):
                 p.error(f"Stored configuration differs: {output}")
             print(f"Skipping completed run: {output}", flush=True)
             continue
         print(f"Running {item['variant']} seed={item['seed']}", flush=True)
         subprocess.run(item["command"], check=True)
+    if source_fingerprint() != code_fingerprint:
+        raise RuntimeError("Source code changed during the suite; refusing to aggregate mixed-version results.")
     summarize(args.output_dir)
     print(f"Completed {len(commands)} runs; summary: {args.output_dir / 'summary.csv'}")
 

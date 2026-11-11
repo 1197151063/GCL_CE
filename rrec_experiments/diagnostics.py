@@ -36,7 +36,7 @@ def gradient_diagnostics(model, graph, data, args):
     rec = model.bpr_terms(model(graph), edges.to(device), negatives.to(device)).mean()
     rec_grad, = torch.autograd.grad(rec, model.embedding.weight)
     raw_cl = contrastive_loss(model, g1, g2, edges.to(device), args.temperature,
-                              args.anchor_chunk_size, args.ssl_side)
+                              args.anchor_chunk_size, args.ssl_side, args.cl_anchor_mode, "mean")
     if args.ssl_weight:
         cl_grad, = torch.autograd.grad(args.ssl_weight * raw_cl, model.embedding.weight)
     else:
@@ -44,6 +44,7 @@ def gradient_diagnostics(model, graph, data, args):
     with torch.no_grad():
         h = model(graph)
         result = {"bpr_loss": float(rec), "raw_cl_loss": float(raw_cl),
+                  "probe_sampling": "fixed_fast", "loss_reduction": "mean_per_probe_interaction",
                   "weighted_cl_loss": float(args.ssl_weight * raw_cl),
                   "probe_edges": edges.size(1), "groups": {}}
         normalized = F.normalize(h, dim=1)

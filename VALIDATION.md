@@ -1,6 +1,17 @@
 # 验证记录
 
-最新更新：2026-11-10。
+最新更新：2026-11-11。
+
+## 当前官方 SGL / 固定 CL 协议（2026-11-11）
+
+- 默认改为official、fast、full三组；seed=2021，完整Yelp训练图、Xavier用户/物品分表初始化、无自环、固定数量ED、点积评估、CL系数0.1、重复anchor、sum总目标、test Recall@20早停。Fast/Full只改变BPR，CL与默认L2参考流固定。旧A–D/shared组属于历史协议，不再默认运行。
+- **27项自动测试通过**：新增官方目标的损失/梯度/Adam一步更新对照、Xavier分表fan、重复anchor与unique干预的精确分块、官方均匀用户采样、BPR-only流隔离、无自环定数量ED，以及代码变化时中止后续调度。Python3.8语法及旧版argparse兼容回归继续通过。
+- **直接执行官方源方法核对**：提取本次下载SGL-Torch的`_LightGCN`和`SGL.train_model`，在相同初始化、三元组及两张归一化图上执行一批训练。与当前`train_epoch`的embedding梯度最大绝对差为`6.109476089477539e-07`，Adam更新后参数最大绝对差为0。记录官方文件SHA-256及验证边界，见`validation/official_upstream_step.json`。这不是在本机执行完整官方工程。
+- **真实Yelp完整图单次更新通过**：64维、3层、16条官方分布样本、全节点InfoNCE、CL权重0.1、Xavier与无自环；反向梯度和Adam更新后参数均有限。数据为1,237,259训练边、324,147测试边。见`validation/official_yelp_step.json`。这是单步验证，不是收敛成绩。
+- **五组微型训练流程完成**（含可选bpr-fast/full）：极小学习率固定排名，均在第11轮早停，最佳第1轮、33次更新。逐epoch验证三条CL流完全相同、五条默认L2正样本流相同、三种BPR流不同，最终诊断和汇总正常，不生成权重文件。见`validation/official_v2_smoke.json`。该清单不作为算法性能证据。
+- 官方NumPy/Cython与当前PyTorch采样器实现相同联合分布，但随机序列不逐位相同。当前尚未在服务器Python3.8/CUDA进行完整收敛验证，**没有宣称复现0.0675/0.0555**。当前测试环境仍为macOS ARM64、Python3.11.7、torch2.6.0。
+
+以下为历史协议验证记录，当前设置以上述官方SGL协议为准。
 
 ## 当前完整训练集 / test-only 协议
 

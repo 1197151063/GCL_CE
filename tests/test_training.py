@@ -9,7 +9,7 @@ from rrec_experiments.train import parser, run
 
 def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatch):
     fixture = Path(__file__).parent / "fixtures" / "tiny"
-    common = ["--data-dir", str(fixture), "--variant", "C", "--device", "cpu", "--threads", "1",
+    common = ["--data-dir", str(fixture), "--variant", "fast", "--device", "cpu", "--threads", "1",
               "--epochs", "2", "--batch-size", "16", "--dim", "4", "--layers", "1", "--ks", "2", "3",
               "--selection-k", "2", "--eval-every", "1", "--diagnostics-every", "1",
               "--diagnostic-batch-size", "8", "--anchor-chunk-size", "3"]
@@ -69,13 +69,15 @@ def test_early_stopping_counts_epochs_and_restores_best(
         calls.append((split, epoch))
         assert split == "test"
         value = .2 if epoch >= improvement_epoch else .1
-        return {"overall": {"recall@2": value, "ndcg@2": value}}
+        # NDCG keeps improving but official early stopping only monitors Recall.
+        return {"overall": {"recall@2": value, "ndcg@2": epoch / 100.}}
 
     monkeypatch.setattr(train, "train_epoch", fake_train)
     monkeypatch.setattr(train, "evaluate", fake_evaluate)
     result = run(args)
     assert result["stopped_epoch"] == expected_stop
     assert result["best_epoch"] == improvement_epoch
+    assert result["best_selection_score"] == .2
     assert result["optimizer_steps"] == 2 * expected_stop
     assert result["stop_reason"] == ("early_stopping" if patience else "max_epochs")
     assert result["selection_split"] == "test"
@@ -98,15 +100,36 @@ def test_default_protocol_is_single_seed_test_early_stopping(tmp_path, monkeypat
     fixture = Path(__file__).parent / "fixtures" / "tiny"
     args = parser().parse_args(["--data-dir", str(fixture), "--output-dir", str(tmp_path)])
     assert (args.patience, args.eval_every) == (10, 1)
+    assert (args.init, args.score, args.self_loops) == ("xavier_uniform", "dot", False)
+    assert (args.ssl_weight, args.temperature, args.drop_ratio) == (.1, .2, .1)
+    assert (args.cl_sampler, args.cl_anchor_mode, args.l2_source, args.selection_objective) == ("user", "repeated", "official", "recall")
     launched = []
 
     def fake_subprocess(command, check):
         run_args = parser().parse_args(command[3:])
-        assert (run_args.seed, run_args.patience) == (0, 10)
+        assert (run_args.seed, run_args.patience) == (2021, 10)
         launched.append(run_args.variant)
 
     monkeypatch.setattr("sys.argv", ["suite", "--data-dir", str(fixture), "--output-dir", str(tmp_path / "suite")])
     monkeypatch.setattr(suite.subprocess, "run", fake_subprocess)
     monkeypatch.setattr(suite, "summarize", lambda path: None)
     suite.main()
-    assert launched == ["shared-fast", "shared-full", "A", "B", "C", "D", "bpr-fast", "bpr-full"]
+    assert launched == ["official", "fast", "full"]
+
+
+def test_suite_stops_if_source_changes_between_runs(tmp_path, monkeypatch):
+    from rrec_experiments import suite
+    fixture = Path(__file__).parent / "fixtures" / "tiny"
+    fingerprint = ["initial"]
+    launched = []
+    monkeypatch.setattr(suite, "source_fingerprint", lambda: fingerprint[0])
+
+    def change_code(command, check):
+        launched.append(command[command.index("--variant") + 1])
+        fingerprint[0] = "changed"
+
+    monkeypatch.setattr(suite.subprocess, "run", change_code)
+    monkeypatch.setattr("sys.argv", ["suite", "--data-dir", str(fixture), "--output-dir", str(tmp_path)])
+    with pytest.raises(RuntimeError, match="Source code changed"):
+        suite.main()
+    assert launched == ["official"]

@@ -1,0 +1,38 @@
+{
+  "data": {
+    "num_users": 31668,
+    "num_items": 38048,
+    "train_edges": 1237259,
+    "test_edges": 324147,
+    "fingerprint": "b02dd44778d2686c60ade32017c5492cafa22294745f711b241965b8db47aeaa",
+    "user_groups": {
+      "head": 3167,
+      "middle": 12667,
+      "tail": 15834,
+      "cold": 0
+    },
+    "item_groups": {
+      "head": 3805,
+      "middle": 15219,
+      "tail": 19024,
+      "cold": 0
+    }
+  },
+  "seed": 2021,
+  "device": "cpu",
+  "dim": 64,
+  "layers": 3,
+  "probe_batch": 16,
+  "self_loops": false,
+  "initializer": "xavier_uniform",
+  "cl_weight": 0.1,
+  "cl_anchor_mode": "repeated",
+  "loss_reduction": "sum",
+  "bpr_loss": 11.090110778808594,
+  "l2_loss": 8.361921572941355e-06,
+  "weighted_cl_loss": 18.143848419189453,
+  "gradient_norm": 1.0973767042160034,
+  "finite_gradients_and_parameters": true,
+  "seconds": 2.372141122817993,
+  "boundary": "One update on the real complete graph with 16 sampled triples, not convergence or CUDA verification."
+}

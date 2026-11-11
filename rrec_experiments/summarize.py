@@ -32,6 +32,8 @@ def summarize(directory, allow_incomplete=False):
                       "temperature", "drop_ratio", "self_loops", "l2_source", "ssl_side", "score",
                       "split_seed", "data_protocol", "ks", "selection_k", "selection_split", "eval_every", "patience",
                       "strict_determinism", "repository_commit", "torch_version")
+    compare_fields += ("experiment_protocol", "source_fingerprint", "init", "cl_sampler",
+                       "cl_anchor_mode", "loss_reduction", "augmentation", "selection_objective")
     cl_weights = set()
     for path in paths:
         result = json.loads(path.read_text())
@@ -39,7 +41,7 @@ def summarize(directory, allow_incomplete=False):
         config.setdefault("dataset", "custom")
         config.setdefault("selection_split", "validation")
         config.setdefault("data_protocol", "legacy_validation_holdout")
-        signature = {key: config[key] for key in compare_fields}
+        signature = {key: config.get(key) for key in compare_fields}
         if reference is not None and signature != reference:
             raise ValueError(f"Cannot pool runs with different controlled settings: {path}")
         reference = signature
@@ -68,7 +70,9 @@ def summarize(directory, allow_incomplete=False):
                                  "std": statistics.stdev(row[name] for row in rows) if len(rows) > 1 else 0.,
                                  "n": len(rows)} for name in metric_names}
     pairs = {}
-    for left, right in [("shared-fast", "shared-full"), ("A", "B"), ("C", "B"), ("D", "B"), ("bpr-fast", "bpr-full")]:
+    for left, right in [("fast", "full"), ("official", "fast"), ("official", "full"),
+                        ("fast", "bpr-fast"), ("full", "bpr-full"), ("bpr-fast", "bpr-full"),
+                        ("shared-fast", "shared-full"), ("A", "B"), ("C", "B"), ("D", "B")]:
         seeds = sorted({s for v, s in records if v == left} & {s for v, s in records if v == right})
         if not seeds:
             continue
@@ -84,6 +88,7 @@ def summarize(directory, allow_incomplete=False):
     output = {"variants": summary, "paired_test_differences": pairs,
               "selection_split": reference["selection_split"], "test_used_for_selection": test_selection,
               "data_protocol": reference["data_protocol"],
+              "experiment_protocol": reference["experiment_protocol"],
               "notes": ["std is sample standard deviation; n=1 has no uncertainty estimate.",
                         "Paired differences use matching training seeds; they do not establish statistical significance.",
                         ("Test data were used for checkpoint selection and early stopping; test scores are not an independent held-out estimate."

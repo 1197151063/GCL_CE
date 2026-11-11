@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-11",
+  "experiment_protocol": "official_sgl_fixed_cl_v2",
+  "seed": 2021,
+  "fixture": "tests/fixtures/tiny",
+  "lr": 1e-30,
+  "purpose": "Constant-ranking plateau for exact early-stop and pipeline verification, not convergence.",
+  "runs": [
+    {
+      "variant": "full",
+      "seed": 2021,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "fast",
+      "seed": 2021,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "official",
+      "seed": 2021,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "bpr-fast",
+      "seed": 2021,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    {
+      "variant": "bpr-full",
+      "seed": 2021,
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    }
+  ],
+  "paired_epochs_checked": 11,
+  "identical_cl_stream_in_all_cl_variants": true,
+  "identical_l2_stream_in_all_variants": true,
+  "distinct_bpr_streams": true,
+  "weight_files_written": 0,
+  "tests_passed": 27
+}

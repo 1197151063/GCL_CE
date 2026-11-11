@@ -2,6 +2,7 @@ import argparse
 from collections import defaultdict
 import json
 import math
+import hashlib
 from pathlib import Path
 import random
 import subprocess
@@ -13,19 +14,17 @@ from .data import RecData
 from .diagnostics import gradient_diagnostics
 from .metrics import evaluate
 from .model import SGL, normalized_graph, contrastive_loss
-from .sampling import batch_occupancy, epoch_indices, generator, negative_items, num_batches
+from .sampling import batch_occupancy, epoch_indices, generator, negative_items, num_batches, sample_fingerprint
 from .presets import PRESETS
 
 VARIANTS = {
-    "A": ("fast", "fast", False, True),
-    "B": ("full", "full", False, True),
-    "C": ("fast", "full", False, True),
-    "D": ("full", "fast", False, True),
-    "shared-fast": ("fast", "fast", True, True),
-    "shared-full": ("full", "full", True, True),
-    "bpr-fast": ("fast", "fast", False, False),
-    "bpr-full": ("full", "full", False, False),
+    "official": ("user", True),
+    "fast": ("fast", True),
+    "full": ("full", True),
+    "bpr-fast": ("fast", False),
+    "bpr-full": ("full", False),
 }
+EXPERIMENT_PROTOCOL = "official_sgl_fixed_cl_v2"
 
 
 def parser():
@@ -33,8 +32,8 @@ def parser():
     p.add_argument("--data-dir", type=Path, required=True)
     p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom", help="Dataset label; profile applied by run_experiments.sh")
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument("--variant", choices=VARIANTS, default="A")
-    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--variant", choices=VARIANTS, default="official")
+    p.add_argument("--seed", type=int, default=2021)
     p.add_argument("--split-seed", type=int, default=20261109,
                    help="Fixed diagnostic probe seed only; training data are not split")
     p.add_argument("--epochs", type=int, default=1000)
@@ -42,21 +41,27 @@ def parser():
     p.add_argument("--dim", type=int, default=64)
     p.add_argument("--layers", type=int, default=3)
     p.add_argument("--init-std", type=float, default=.01)
+    p.add_argument("--init", choices=("xavier_uniform", "normal"), default="xavier_uniform")
     p.add_argument("--lr", type=float, default=.001)
     p.add_argument("--decay", type=float, default=.0001)
-    p.add_argument("--ssl-weight", type=float, default=.2)
+    p.add_argument("--ssl-weight", type=float, default=.1)
+    p.add_argument("--cl-sampler", choices=("user", "fast", "full"), default="user",
+                   help="Independent CL sampling shared across all variants; official reference always uses user")
+    p.add_argument("--cl-anchor-mode", choices=("repeated", "unique"), default="repeated")
     p.add_argument("--ssl-side", choices=("both", "user", "item"), default="both")
     p.add_argument("--temperature", type=float, default=.2)
     p.add_argument("--drop-ratio", type=float, default=.1)
     self_loops = p.add_mutually_exclusive_group()
     self_loops.add_argument("--self-loops", dest="self_loops", action="store_true")
     self_loops.add_argument("--no-self-loops", dest="self_loops", action="store_false")
-    p.set_defaults(self_loops=True)
+    p.set_defaults(self_loops=False)
     p.add_argument("--anchor-chunk-size", type=int, default=256)
-    p.add_argument("--l2-source", choices=("independent", "bpr"), default="independent")
+    p.add_argument("--l2-source", choices=("official", "bpr"), default="official",
+                   help="official fixes L2 triples across variants; bpr is an explicit coupled-L2 ablation")
     p.add_argument("--ks", type=int, nargs="+", default=[20, 50])
     p.add_argument("--selection-k", type=int, default=20)
-    p.add_argument("--score", choices=("dot", "cosine"), default="cosine")
+    p.add_argument("--score", choices=("dot", "cosine"), default="dot")
+    p.add_argument("--selection-objective", choices=("recall", "recall+ndcg"), default="recall")
     p.add_argument("--eval-every", type=int, default=1,
                    help="Evaluation interval when patience=0; early stopping always evaluates every epoch")
     p.add_argument("--patience", type=int, default=10,
@@ -124,13 +129,29 @@ def source_revision():
     return recorded.read_text().strip() if recorded.is_file() else None
 
 
+def source_fingerprint():
+    root = Path(__file__).resolve().parent.parent
+    digest = hashlib.sha256()
+    for path in sorted((root / "rrec_experiments").glob("*.py")) + [root / "run.py"]:
+        digest.update(str(path.relative_to(root)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def epoch_samples(data, args, epoch):
+    """Only BPR changes in fast/full; CL and default L2 reuse the reference stream."""
+    sampler, _ = VARIANTS[args.variant]
+    official = epoch_indices(data, "user", args.seed, epoch, "official")
+    bpr = official if args.variant == "official" else epoch_indices(data, sampler, args.seed, epoch, "bpr")
+    cl = official if args.variant == "official" or args.cl_sampler == "user" else epoch_indices(data, args.cl_sampler, args.seed, epoch, "cl")
+    l2 = bpr if args.l2_source == "bpr" else official
+    return bpr, cl, l2
+
+
 def train_epoch(model, optimizer, graph, data, args, epoch):
     model.train()
     device = model.embedding.weight.device
-    bpr_sampler, cl_sampler, shared, _ = VARIANTS[args.variant]
-    bpr_indices = epoch_indices(data, bpr_sampler, args.seed, epoch, "bpr")
-    cl_indices = (bpr_indices if shared else epoch_indices(data, cl_sampler, args.seed, epoch, "cl")) if args.ssl_weight else None
-    l2_indices = epoch_indices(data, "fast", args.seed, epoch, "l2") if args.l2_source == "independent" and args.decay else None
+    bpr_indices, cl_indices, l2_indices = epoch_samples(data, args, epoch)
     if args.ssl_weight:
         view1 = normalized_graph(data, device, args.drop_ratio, generator(args.seed, epoch, "view1"), args.self_loops)
         view2 = normalized_graph(data, device, args.drop_ratio, generator(args.seed, epoch, "view2"), args.self_loops)
@@ -138,15 +159,16 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
     steps = num_batches(data, args.batch_size)
     for step, start in enumerate(range(0, data.num_edges, args.batch_size)):
         edges = make_batch(data, bpr_indices, start, args.batch_size)
-        neg = negative_items(data, edges[0], generator(args.seed, epoch, step, "bpr_negatives"))
-        cl_edges = make_batch(data, cl_indices, start, args.batch_size) if cl_indices is not None else None
+        neg_stream = "official_negatives" if args.variant == "official" else "bpr_negatives"
+        neg = negative_items(data, edges[0], generator(args.seed, epoch, step, neg_stream))
+        cl_edges = make_batch(data, cl_indices, start, args.batch_size) if args.ssl_weight else None
         optimizer.zero_grad(set_to_none=True)
-        bpr = model.bpr_terms(model(graph), edges.to(device), neg.to(device)).mean()
+        bpr = model.bpr_terms(model(graph), edges.to(device), neg.to(device)).sum()
         reg = bpr.new_zeros(())
         if args.decay:
-            if args.l2_source == "independent":
+            if args.l2_source == "official" and args.variant != "official":
                 le = make_batch(data, l2_indices, start, args.batch_size)
-                ln = negative_items(data, le[0], generator(args.seed, epoch, step, "l2_negatives"))
+                ln = negative_items(data, le[0], generator(args.seed, epoch, step, "official_negatives"))
                 reg = args.decay * model.l2(le.to(device), ln.to(device))
             else:
                 reg = args.decay * model.l2(edges.to(device), neg.to(device))
@@ -158,7 +180,8 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         cl = bpr.new_zeros(())
         if args.ssl_weight:
             cl = args.ssl_weight * contrastive_loss(model, view1, view2, cl_edges.to(device),
-                                                     args.temperature, args.anchor_chunk_size, args.ssl_side)
+                                                     args.temperature, args.anchor_chunk_size, args.ssl_side,
+                                                     args.cl_anchor_mode, "sum")
             if not torch.isfinite(cl):
                 raise FloatingPointError(f"Nonfinite CL loss at epoch={epoch} step={step}")
             cl.backward()
@@ -167,16 +190,19 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         totals["l2_loss"] += float(reg.detach())
         totals["cl_loss"] += float(cl.detach())
         if cl_edges is not None:
-            for key, value in batch_occupancy(data, edges, cl_edges).items():
+            for key, value in batch_occupancy(data, edges, cl_edges, args.cl_anchor_mode).items():
                 totals[key] += value
-    result = {k: v / steps for k, v in totals.items()}
+    result = {k: v / (data.num_edges if k.endswith("_loss") else steps) for k, v in totals.items()}
     result["optimizer_steps"] = steps
+    result["bpr_sample_fingerprint"] = sample_fingerprint(bpr_indices)
+    result["cl_sample_fingerprint"] = sample_fingerprint(cl_indices) if args.ssl_weight else None
+    result["l2_sample_fingerprint"] = sample_fingerprint(l2_indices) if args.decay else None
     return result
 
 
 def run(args):
     validate(args)
-    _, _, _, use_cl = VARIANTS[args.variant]
+    _, use_cl = VARIANTS[args.variant]
     if not use_cl:
         args.ssl_weight = 0.
     if args.output_dir.exists() and any(args.output_dir.iterdir()):
@@ -192,14 +218,18 @@ def run(args):
     data = RecData.load(args.data_dir)
     if max(args.ks) > data.num_items:
         raise ValueError("max(ks) exceeds number of dataset items")
-    model = SGL(data.num_users, data.num_items, args.dim, args.layers, args.init_std).to(device)
+    model = SGL(data.num_users, data.num_items, args.dim, args.layers, args.init_std, args.init).to(device)
     graph = normalized_graph(data, device, self_loops=args.self_loops)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     commit = source_revision()
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
+              "experiment_protocol": EXPERIMENT_PROTOCOL, "source_fingerprint": source_fingerprint(),
+              "loss_reduction": "sum", "augmentation": "fixed_count_ed",
+              "effective_cl_sampler": "user" if args.variant == "official" else args.cl_sampler,
+              "cl_bpr_shared": args.variant == "official",
               "data_protocol": "full_train_test_v1", "selection_split": "test",
-              "selection_metric": f"test recall@{args.selection_k} + ndcg@{args.selection_k}",
+              "selection_metric": f"test {args.selection_objective}@{args.selection_k}",
               "test_used_for_selection": True}
     write_json(args.output_dir / "config.json", config)
     best, best_epoch, updates = -math.inf, 0, 0
@@ -216,7 +246,9 @@ def run(args):
         if args.patience or epoch == 1 or epoch % args.eval_every == 0 or epoch == args.epochs:
             metrics = evaluate(model, graph, data, "test", args.ks, args.eval_batch_size, args.score)
             record["test"] = metrics
-            score = metrics["overall"][f"recall@{args.selection_k}"] + metrics["overall"][f"ndcg@{args.selection_k}"]
+            score = metrics["overall"][f"recall@{args.selection_k}"]
+            if args.selection_objective == "recall+ndcg":
+                score += metrics["overall"][f"ndcg@{args.selection_k}"]
             if not math.isfinite(score):
                 raise FloatingPointError(f"Nonfinite selection score at epoch={epoch}")
             if score > best:
@@ -247,6 +279,7 @@ def run(args):
     result = {"variant": args.variant, "seed": args.seed, "best_epoch": best_epoch,
               "stopped_epoch": epoch, "optimizer_steps": updates, "best_selection_score": best,
               "stop_reason": stop_reason, "selection_split": "test", "data_protocol": "full_train_test_v1",
+              "experiment_protocol": EXPERIMENT_PROTOCOL,
               "test_used_for_selection": True,
               "seconds": time.time() - begin, "test": test,
               "data_fingerprint": data.fingerprint}
