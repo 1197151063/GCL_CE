@@ -34,7 +34,7 @@ def main():
                                 epilog="Other options, e.g. --seeds, --variants, --device, are forwarded to every suite.")
     p.add_argument("--datasets", choices=["all", *PRESETS], nargs="+", default=["yelp2018"])
     p.add_argument("--data-root", type=Path, default=root / "data")
-    p.add_argument("--output-root", type=Path, default=root / "runs" / "sgl_official_v2")
+    p.add_argument("--output-root", type=Path, default=root / "runs" / "sgl_shared_v3")
     p.add_argument("--dry-run", action="store_true")
     args, extra = p.parse_known_args()
     try:

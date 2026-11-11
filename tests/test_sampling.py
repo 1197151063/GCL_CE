@@ -50,3 +50,21 @@ def test_fast_full_change_only_bpr_stream_with_default_settings(tiny_data, tmp_p
         assert torch.equal(l2, reference)
         assert torch.equal(bpr, reference) == (variant == "official")
     assert not torch.equal(samples["fast"][0], samples["full"][0])
+
+
+def test_shared_fast_reuses_bpr_samples_not_an_independent_fast_stream(tiny_data, tmp_path):
+    from rrec_experiments.train import parser, epoch_samples, sampling_policy
+
+    common = ["--data-dir", str(tmp_path), "--output-dir", str(tmp_path)]
+    shared = parser().parse_args([*common, "--variant", "shared-fast"])
+    independent = parser().parse_args([*common, "--variant", "fast",
+                                      "--cl-sampler", "fast", "--l2-source", "bpr"])
+    assert sampling_policy(shared) == {"bpr_sampler": "fast", "cl_sampler": "fast",
+                                       "cl_bpr_shared": True, "l2_source": "bpr"}
+    for epoch in [1, 2, 3]:
+        bpr, cl, l2 = epoch_samples(tiny_data, shared, epoch)
+        other_bpr, other_cl, other_l2 = epoch_samples(tiny_data, independent, epoch)
+        assert cl is bpr and l2 is bpr
+        assert torch.equal(bpr.sort().values, torch.arange(tiny_data.num_edges))
+        assert torch.equal(bpr, other_bpr) and torch.equal(l2, other_l2)
+        assert not torch.equal(cl, other_cl)

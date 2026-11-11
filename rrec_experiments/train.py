@@ -19,12 +19,13 @@ from .presets import PRESETS
 
 VARIANTS = {
     "official": ("user", True),
+    "shared-fast": ("fast", True),
     "fast": ("fast", True),
     "full": ("full", True),
     "bpr-fast": ("fast", False),
     "bpr-full": ("full", False),
 }
-EXPERIMENT_PROTOCOL = "official_sgl_fixed_cl_v2"
+EXPERIMENT_PROTOCOL = "official_sgl_shared_fast_v3"
 
 
 def parser():
@@ -46,7 +47,7 @@ def parser():
     p.add_argument("--decay", type=float, default=.0001)
     p.add_argument("--ssl-weight", type=float, default=.1)
     p.add_argument("--cl-sampler", choices=("user", "fast", "full"), default="user",
-                   help="Independent CL sampling shared across all variants; official reference always uses user")
+                   help="Independent CL sampler for fast/full; official/shared-fast always reuse their BPR batch")
     p.add_argument("--cl-anchor-mode", choices=("repeated", "unique"), default="repeated")
     p.add_argument("--ssl-side", choices=("both", "user", "item"), default="both")
     p.add_argument("--temperature", type=float, default=.2)
@@ -57,7 +58,7 @@ def parser():
     p.set_defaults(self_loops=False)
     p.add_argument("--anchor-chunk-size", type=int, default=256)
     p.add_argument("--l2-source", choices=("official", "bpr"), default="official",
-                   help="official fixes L2 triples across variants; bpr is an explicit coupled-L2 ablation")
+                   help="L2 source for fast/full; official/shared-fast always reuse their BPR triples")
     p.add_argument("--ks", type=int, nargs="+", default=[20, 50])
     p.add_argument("--selection-k", type=int, default=20)
     p.add_argument("--score", choices=("dot", "cosine"), default="dot")
@@ -138,18 +139,32 @@ def source_fingerprint():
     return digest.hexdigest()
 
 
-def epoch_samples(data, args, epoch):
-    """Only BPR changes in fast/full; CL and default L2 reuse the reference stream."""
+def sampling_policy(args):
+    """Resolve fixed shared-batch variants separately from optional interventions."""
     sampler, _ = VARIANTS[args.variant]
+    shared = args.variant in ("official", "shared-fast")
+    return {"bpr_sampler": sampler,
+            "cl_sampler": sampler if shared else args.cl_sampler,
+            "cl_bpr_shared": shared,
+            "l2_source": "bpr" if shared else args.l2_source}
+
+
+def epoch_samples(data, args, epoch):
+    """Shared variants reuse one batch; default fast/full change only BPR."""
+    policy = sampling_policy(args)
     official = epoch_indices(data, "user", args.seed, epoch, "official")
-    bpr = official if args.variant == "official" else epoch_indices(data, sampler, args.seed, epoch, "bpr")
-    cl = official if args.variant == "official" or args.cl_sampler == "user" else epoch_indices(data, args.cl_sampler, args.seed, epoch, "cl")
-    l2 = bpr if args.l2_source == "bpr" else official
+    bpr = official if args.variant == "official" else epoch_indices(data, policy["bpr_sampler"], args.seed, epoch, "bpr")
+    if policy["cl_bpr_shared"]:
+        cl = bpr
+    else:
+        cl = official if policy["cl_sampler"] == "user" else epoch_indices(data, policy["cl_sampler"], args.seed, epoch, "cl")
+    l2 = bpr if policy["l2_source"] == "bpr" else official
     return bpr, cl, l2
 
 
 def train_epoch(model, optimizer, graph, data, args, epoch):
     model.train()
+    policy = sampling_policy(args)
     device = model.embedding.weight.device
     bpr_indices, cl_indices, l2_indices = epoch_samples(data, args, epoch)
     if args.ssl_weight:
@@ -166,7 +181,7 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         bpr = model.bpr_terms(model(graph), edges.to(device), neg.to(device)).sum()
         reg = bpr.new_zeros(())
         if args.decay:
-            if args.l2_source == "official" and args.variant != "official":
+            if policy["l2_source"] == "official":
                 le = make_batch(data, l2_indices, start, args.batch_size)
                 ln = negative_items(data, le[0], generator(args.seed, epoch, step, "official_negatives"))
                 reg = args.decay * model.l2(le.to(device), ln.to(device))
@@ -222,16 +237,21 @@ def run(args):
     graph = normalized_graph(data, device, self_loops=args.self_loops)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     commit = source_revision()
+    policy = sampling_policy(args)
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
               "experiment_protocol": EXPERIMENT_PROTOCOL, "source_fingerprint": source_fingerprint(),
               "loss_reduction": "sum", "augmentation": "fixed_count_ed",
-              "effective_cl_sampler": "user" if args.variant == "official" else args.cl_sampler,
-              "cl_bpr_shared": args.variant == "official",
+              "sampling_policy": policy,
+              "effective_cl_sampler": policy["cl_sampler"],
+              "effective_l2_source": policy["l2_source"],
+              "cl_bpr_shared": policy["cl_bpr_shared"],
+              "l2_bpr_shared": policy["l2_source"] == "bpr",
               "data_protocol": "full_train_test_v1", "selection_split": "test",
               "selection_metric": f"test {args.selection_objective}@{args.selection_k}",
               "test_used_for_selection": True}
     write_json(args.output_dir / "config.json", config)
+    print(f"Sampling: {json.dumps(policy, sort_keys=True)}", flush=True)
     best, best_epoch, updates = -math.inf, 0, 0
     best_state = None
     stop_reason = "max_epochs"

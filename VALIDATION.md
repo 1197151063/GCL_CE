@@ -2,7 +2,15 @@
 
 最新更新：2026-11-11。
 
-## 当前官方 SGL / 固定 CL 协议（2026-11-11）
+## 当前官方 SGL / 共享 Fast 对照协议 v3（2026-11-11）
+
+- 新增shared-fast：BPR、重复InfoNCE anchors与L2三元组使用同一Fast batch，L2复用BPR负例。它与fast使用完全相同的BPR顺序、负例、初始化及增强图；fast/full仍保持原先只改BPR的行为。默认official、shared-fast、fast、full四组，Yelp2018单seed=2021、test Recall@20早停、不保存权重的设置不变。新结果放在`runs/sgl_shared_v3`，协议标记为`official_sgl_shared_fast_v3`。
+- **30项自动测试通过**。新增共享Fast与独立Fast CL随机流的区分、shared-fast完整训练路径与官方同batch总损失公式的梯度/Adam一步更新对照（包括L2正负样本），以及shared-fast重复训练的结果与诊断可复现性、实际采样元数据检查。Python3.8语法检查继续通过。
+- **四组微型端到端训练完成**：36条训练边，每轮3步，极小学习率制造平台期，均在第11轮停止、最佳第1轮、33次更新。逐轮检查official/fast/full的CL及默认L2参考流一致；shared-fast内部三个正交互采样指纹一致，BPR与fast一致，头部CL anchor占比与BPR占比一致；三条新增shared-fast配对汇总正常，无`.pt`文件。记录见`validation/shared_fast_v3_smoke.json`。这些检查不是推荐性能实验。
+- Yelp入口dry-run确认只生成上述四条seed=2021命令，使用新输出目录；两个服务器脚本语法及Git差异空白检查通过。本次未在CUDA上完整训练shared-fast，尚不能宣称达到0.0695。此前用户上传的v2服务器结果为official Recall@20=0.067432、NDCG@20=0.055424；fast为0.067807，这些不是新shared-fast的成绩。
+- shared-fast与fast的比较同时包含CL重加权、L2采样和batch共享关系，不能单独识别CL因果作用。README列出后续分开干预命令；独立Fast CL与共享Fast的anchor边际分布相同，但batch耦合关系不同。
+
+## 此前官方 SGL / 固定 CL 协议 v2（2026-11-11）
 
 - 默认改为official、fast、full三组；seed=2021，完整Yelp训练图、Xavier用户/物品分表初始化、无自环、固定数量ED、点积评估、CL系数0.1、重复anchor、sum总目标、test Recall@20早停。Fast/Full只改变BPR，CL与默认L2参考流固定。旧A–D/shared组属于历史协议，不再默认运行。
 - **27项自动测试通过**：新增官方目标的损失/梯度/Adam一步更新对照、Xavier分表fan、重复anchor与unique干预的精确分块、官方均匀用户采样、BPR-only流隔离、无自环定数量ED，以及代码变化时中止后续调度。Python3.8语法及旧版argparse兼容回归继续通过。

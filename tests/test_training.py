@@ -7,9 +7,10 @@ from rrec_experiments import train
 from rrec_experiments.train import parser, run
 
 
-def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatch):
+@pytest.mark.parametrize("variant", ["fast", "shared-fast"])
+def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatch, variant):
     fixture = Path(__file__).parent / "fixtures" / "tiny"
-    common = ["--data-dir", str(fixture), "--variant", "fast", "--device", "cpu", "--threads", "1",
+    common = ["--data-dir", str(fixture), "--variant", variant, "--device", "cpu", "--threads", "1",
               "--epochs", "2", "--batch-size", "16", "--dim", "4", "--layers", "1", "--ks", "2", "3",
               "--selection-k", "2", "--eval-every", "1", "--diagnostics-every", "1",
               "--diagnostic-batch-size", "8", "--anchor-chunk-size", "3"]
@@ -33,6 +34,10 @@ def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatc
     assert config["data"]["train_edges"] == 36
     assert "validation_edges" not in config["data"]
     assert config["data_protocol"] == "full_train_test_v1"
+    assert config["cl_bpr_shared"] == (variant == "shared-fast")
+    assert config["l2_bpr_shared"] == (variant == "shared-fast")
+    assert config["effective_cl_sampler"] == ("fast" if variant == "shared-fast" else "user")
+    assert config["effective_l2_source"] == ("bpr" if variant == "shared-fast" else "official")
     for key, value in models[0].state_dict().items():
         assert torch.equal(value, models[1].state_dict()[key])
     rows = [json.loads(l) for l in (tmp_path / "one" / "diagnostics.jsonl").read_text().splitlines()]
@@ -114,7 +119,7 @@ def test_default_protocol_is_single_seed_test_early_stopping(tmp_path, monkeypat
     monkeypatch.setattr(suite.subprocess, "run", fake_subprocess)
     monkeypatch.setattr(suite, "summarize", lambda path: None)
     suite.main()
-    assert launched == ["official", "fast", "full"]
+    assert launched == ["official", "shared-fast", "fast", "full"]
 
 
 def test_suite_stops_if_source_changes_between_runs(tmp_path, monkeypatch):

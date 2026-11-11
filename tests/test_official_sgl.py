@@ -65,3 +65,47 @@ def test_xavier_initializes_user_and_item_tables_separately(monkeypatch):
     monkeypatch.setattr(torch.nn.init, "xavier_uniform_", capture)
     SGL(7, 13, 4)
     assert shapes == [(7, 4), (13, 4)]
+
+
+def test_shared_fast_training_matches_one_joint_loss_with_shared_negatives(tiny_data, tmp_path):
+    from rrec_experiments.train import parser, train_epoch
+    from rrec_experiments.sampling import epoch_indices, negative_items
+
+    args = parser().parse_args([
+        "--data-dir", str(tmp_path), "--output-dir", str(tmp_path), "--variant", "shared-fast",
+        "--dim", "4", "--layers", "1", "--batch-size", str(tiny_data.num_edges),
+    ])
+    # Leave --l2-source/--cl-sampler at their defaults: the shared variant must
+    # still use exactly its BPR positives AND BPR negatives for regularization.
+    model = SGL(tiny_data.num_users, tiny_data.num_items, 4, 1)
+    reference = SGL(tiny_data.num_users, tiny_data.num_items, 4, 1)
+    reference.load_state_dict(model.state_dict())
+    graph = normalized_graph(tiny_data, "cpu")
+    epoch = 2
+    edges = tiny_data.train[:, epoch_indices(tiny_data, "fast", args.seed, epoch, "bpr")]
+    negative = negative_items(tiny_data, edges[0], generator(args.seed, epoch, 0, "bpr_negatives"))
+    views = [normalized_graph(tiny_data, "cpu", args.drop_ratio,
+                              generator(args.seed, epoch, name)) for name in ("view1", "view2")]
+    # Direct official equations, rather than the production CL/L2 helpers.
+    n = tiny_data.num_users
+    u, i = edges
+    h = reference(graph)
+    bpr = -F.logsigmoid((h[u] * (h[i+n] - h[negative+n])).sum(-1)).sum()
+    v1, v2 = (F.normalize(reference(view), dim=1) for view in views)
+    cl = h.new_zeros(())
+    for offset, size, ids in [(0, n, u), (n, tiny_data.num_items, i)]:
+        x, y = v1[offset:offset+size], v2[offset:offset+size]
+        positive = (x[ids] * y[ids]).sum(-1)
+        cl += torch.logsumexp((x[ids] @ y.T - positive[:, None]) / args.temperature, dim=1).sum()
+    reg = .5 * sum(reference.embedding.weight[ids].square().sum() for ids in [u, i+n, negative+n])
+    objective = bpr + args.ssl_weight*cl + args.decay*reg
+    optimizer_ref = torch.optim.Adam(reference.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    objective.backward()
+    optimizer_ref.step()
+    result = train_epoch(model, optimizer, graph, tiny_data, args, epoch)
+    assert torch.allclose(reference.embedding.weight.grad, model.embedding.weight.grad, atol=1e-5, rtol=1e-5)
+    assert torch.allclose(reference.embedding.weight, model.embedding.weight, atol=1e-7, rtol=1e-6)
+    assert result["bpr_sample_fingerprint"] == result["cl_sample_fingerprint"] == result["l2_sample_fingerprint"]
+    assert result["user_head_bpr_share"] == result["user_head_cl_anchor_share"]
+    assert result["item_head_bpr_share"] == result["item_head_cl_anchor_share"]

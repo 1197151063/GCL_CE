@@ -12,13 +12,13 @@ from .presets import PRESETS
 
 
 def main():
-    p = argparse.ArgumentParser(description="Official SGL reference and BPR-only sampling interventions", allow_abbrev=False,
+    p = argparse.ArgumentParser(description="Official SGL, shared Fast batch, and BPR-only sampling interventions", allow_abbrev=False,
                                 epilog="Other training options are forwarded; use train --help to list them.")
     p.add_argument("--data-dir", type=Path, required=True)
     p.add_argument("--dataset", choices=["custom", *PRESETS], default="custom")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--seeds", type=int, nargs="+", default=[2021])
-    p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["official", "fast", "full"])
+    p.add_argument("--variants", choices=VARIANTS, nargs="+", default=["official", "shared-fast", "fast", "full"])
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-completed", action="store_true")
     args, extra = p.parse_known_args()

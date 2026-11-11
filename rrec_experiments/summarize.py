@@ -71,6 +71,7 @@ def summarize(directory, allow_incomplete=False):
                                  "n": len(rows)} for name in metric_names}
     pairs = {}
     for left, right in [("fast", "full"), ("official", "fast"), ("official", "full"),
+                        ("shared-fast", "official"), ("shared-fast", "fast"), ("shared-fast", "full"),
                         ("fast", "bpr-fast"), ("full", "bpr-full"), ("bpr-fast", "bpr-full"),
                         ("shared-fast", "shared-full"), ("A", "B"), ("C", "B"), ("D", "B")]:
         seeds = sorted({s for v, s in records if v == left} & {s for v, s in records if v == right})

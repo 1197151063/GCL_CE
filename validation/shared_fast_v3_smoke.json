@@ -1,0 +1,60 @@
+{
+  "date": "2026-11-11",
+  "scope": "Tiny CPU pipeline and sample-sharing verification, not convergence performance",
+  "source_fingerprint": "9e70e5e8f26abc0ba962b7558d7dfe167bc6f9888f54fc1794652fa77c5cae4d",
+  "variants": {
+    "official": {
+      "sampling_policy": {
+        "bpr_sampler": "user",
+        "cl_sampler": "user",
+        "cl_bpr_shared": true,
+        "l2_source": "bpr"
+      },
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    "shared-fast": {
+      "sampling_policy": {
+        "bpr_sampler": "fast",
+        "cl_sampler": "fast",
+        "cl_bpr_shared": true,
+        "l2_source": "bpr"
+      },
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    "fast": {
+      "sampling_policy": {
+        "bpr_sampler": "fast",
+        "cl_sampler": "user",
+        "cl_bpr_shared": false,
+        "l2_source": "official"
+      },
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    },
+    "full": {
+      "sampling_policy": {
+        "bpr_sampler": "full",
+        "cl_sampler": "user",
+        "cl_bpr_shared": false,
+        "l2_source": "official"
+      },
+      "best_epoch": 1,
+      "stopped_epoch": 11,
+      "optimizer_steps": 33
+    }
+  },
+  "checks": {
+    "reference_cl_and_l2_fixed_across_official_fast_full": true,
+    "shared_fast_bpr_cl_l2_positive_fingerprints_identical": true,
+    "shared_fast_and_fast_bpr_identical": true,
+    "shared_fast_head_anchor_shares_match_bpr": true,
+    "shared_fast_paired_comparisons_present": true,
+    "weights_saved": false,
+    "unit_tests_passed": 30
+  }
+}
