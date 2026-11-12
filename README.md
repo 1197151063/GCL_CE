@@ -1,6 +1,44 @@
 # SGL 官方基线、共享 Fast 与 BPR 采样实验
 
-当前目标是对齐 [SGL-Torch](https://github.com/wujcan/SGL-Torch)，比较**共享 Fast batch**与**只改变 BPR 采样**的效果。默认只跑 Yelp2018，一个seed=2021，四组实验，不保存 `.pt`。上一版服务器结果中，official得到Recall@20=0.06743、NDCG@20=0.05542，接近参考0.0675/0.0555；BPR-only Fast得到0.06781。用户报告的约0.0695来自BPR和InfoNCE共用Fast batch，新增shared-fast用于检验这一设置，尚无其完整训练成绩。
+## 当前归因实验（2026-11-12）
+
+上一轮官方Full（代码名official）Recall@20=0.067432，共享Fast为0.068949；头部用户Recall@20分别为0.045276和0.046795。本轮不重复官方Full，也不跑额外R-Rec Full；固定所有组的Fast BPR正例顺序、负例和增强图，拆分收益来源。新增入口仍在本项目：
+
+```bash
+conda activate cyj
+cd /home/lhb/cyj/GCL_CE
+git pull --ff-only
+mkdir -p runs/attribution_v4
+nohup python -u run_attribution.py --device cuda > runs/attribution_v4/console.log 2>&1 &
+tail -f runs/attribution_v4/console.log
+```
+
+默认只跑Yelp2018、seed=2021，完整train训练，每epoch在test评估，以Recall@20连续10轮无严格提升早停，不保存`.pt`。八组依次运行，结果位于`runs/attribution_v4/yelp2018/`，每组均有config/epochs/diagnostics/result。每完成一组就更新`attribution.json`与`attribution.md`，包含配对差值、相同epoch差值、CL×L2交互项及采样指纹检查。旧结果不覆盖。
+
+| 组名 | CL anchors | L2三元组 | 特殊干预 |
+|---|---|---|---|
+| baseline | 官方均匀用户流 | 官方流 | 原BPR-only Fast基线 |
+| cl-fast | 独立Fast流 | 官方流 | 仅改变CL分布 |
+| l2-fast | 官方均匀用户流 | BPR batch | 仅改变L2来源 |
+| cl-l2-fast | 独立Fast流 | BPR batch | 与前3组构成CL×L2对照 |
+| shared-fast | BPR同一Fast batch | BPR batch | 对比cl-l2-fast，检验batch共享关系 |
+| head-up | 与baseline逐条相同 | 官方流 | 仅提高用户头部CL行权重 |
+| head-down | 与shared-fast逐条相同 | BPR batch | 仅降低用户头部CL行权重 |
+| no-cl | 无CL | 官方流 | 与baseline比较CL的影响 |
+
+head-up将用户头部的CL加权质量从约10%调到34.26%；head-down反向调回10%。两组都同时调整非头部权重，使实际采样分布下的用户CL期望权重仍为1，排除整体CL强度变化；组内相对权重、物品CL和全节点候选集合不变。它们重加权的是完整InfoNCE行，不是单独放大正对齐项，不能将收益直接归因为吸引项。
+
+各组记录BPR/L2负例指纹，汇总时核对需要固定的正负样本流；CL与L2效应在对方的两个水平下分别比较，并记录交互项。独立Fast CL与共享Fast的边际分布相同，但随机梯度耦合及更新顺序不同。样本流独立不意味着改变期望目标，batch共享关系的比较需与CL分布干预区分。
+
+归因入口默认开启`--decompose-cl`。固定Fast探针把InfoNCE精确拆为`-正对logit + logsumexp(所有候选logits)`，记录各用户/物品度数组的两项梯度范数及其对BPR梯度方向的投影，并核对两项梯度之和等于完整CL梯度。log-partition包含正例，不能称为纯负例惩罚，也不等同于几何uniformity。探针不按每组训练流采样，且不含L2/Adam，因此是模型状态诊断，不能替代训练期望梯度或因果干预。
+
+`python run_attribution.py --dry-run --device cuda`仅查看计划。`--runs cl-fast l2-fast`可选子集，但应使用新输出目录；`--skip-completed`只跳过计划、源码与配置一致的已完成组，不续训未完成组。源码变化会终止后续调度。下载整目录后，可在本地调用`rrec_experiments.attribution.summarize_study(path)`重新汇总，路径不依赖服务器绝对位置。
+
+本轮八组数据返回前，尚不能确认CL、L2、共享关系或头部权重哪一个是主要原因。一个seed与test选模用于观察现象，不报告统计显著性。
+
+---
+
+以下是原始基线入口`run.py`的说明：默认只跑Yelp2018，一个seed=2021，四组实验，不保存`.pt`。它用于对齐[SGL-Torch](https://github.com/wujcan/SGL-Torch)，与上面的八组归因入口分开。已返回服务器成绩：official Recall@20=0.06743、NDCG@20=0.05542；BPR-only Fast记录最佳为0.06781；shared-fast为0.06895，接近但未达到用户报告的0.0695。
 
 源码、四个数据集、测试和启动脚本在同一Git项目；兼容现有Python3.8/PyTorch2.0.1环境，不依赖PyG或torch-sparse。
 
@@ -18,12 +56,12 @@ python run.py --dry-run
 前台只需 `python -u run.py --device cuda`。后台运行：
 
 ```bash
-mkdir -p runs/sgl_shared_v3
-nohup python -u run.py --device cuda > runs/sgl_shared_v3/console.log 2>&1 &
-tail -f runs/sgl_shared_v3/console.log
+mkdir -p runs/sgl_reference_v4
+nohup python -u run.py --device cuda > runs/sgl_reference_v4/console.log 2>&1 &
+tail -f runs/sgl_reference_v4/console.log
 ```
 
-结果默认写到 `runs/sgl_shared_v3/yelp2018/{official,shared-fast,fast,full}/seed_2021/`。再次重跑请加新目录，例如 `--output-root runs/sgl_v3_repeat`。不覆盖非空单次运行目录，不自动续训；`--skip-completed` 仅跳过源码指纹、协议和配置都一致的已完成组。两个Bash入口仍只进入服务器目录后调用Python，不探测环境。
+结果默认写到 `runs/sgl_reference_v4/yelp2018/{official,shared-fast,fast,full}/seed_2021/`。再次重跑请加新目录，例如 `--output-root runs/sgl_v3_repeat`。不覆盖非空单次运行目录，不自动续训；`--skip-completed` 仅跳过源码指纹、协议和配置都一致的已完成组。两个Bash入口仍只进入服务器目录后调用Python，不探测环境。
 
 ## 默认四组
 
@@ -93,18 +131,18 @@ python run.py --device cuda --variants fast --cl-sampler fast --output-root runs
 python run.py --device cuda --variants fast --cl-sampler fast --l2-source bpr --output-root runs/cl_fast_bpr_l2
 ```
 
-旧A–D/shared-full已移除。本次重新使用shared-fast名称，但其官方目标、超参和数据协议与历史版本不同；只比较本次v3结果，历史结果保留在原目录与Git历史。
+旧A–D/shared-full已移除。本次重新使用shared-fast名称，但其官方目标、超参和数据协议与历史版本不同；v3历史结果保留原目录与Git历史，新代码使用v4协议，不混合不同版本的结果。
 
 ## 诊断、汇总和其他数据集
 
-输出config.json、epochs.jsonl、diagnostics.jsonl、result.json；套件完成生成summary.json/summary.csv。记录提交号、实际源码指纹、数据指纹及 `experiment_protocol=official_sgl_shared_fast_v3`，拒绝混合不同协议、源码及CL设置。汇总增加shared-fast相对official/fast/full的配对差值。
+输出config.json、epochs.jsonl、diagnostics.jsonl、result.json；套件完成生成summary.json/summary.csv。记录提交号、实际源码指纹、数据指纹及 `experiment_protocol=official_sgl_attribution_v4`，拒绝混合不同协议、源码及CL设置。汇总增加shared-fast相对official/fast/full的配对差值。
 
 用户/物品分别按完整训练度数分组：head最高10%、tail最低50%、其余middle，零度为cold。输出用户组Recall/NDCG、物品对整体Recall贡献及物品条件组内Recall。
 
 梯度探针默认第0轮、每25轮和最好模型计算，`--diagnostics-every 0` 可关闭。探针统一每交互平均损失，与重复anchor的sum训练具有相同BPR/CL比例；固定Fast探针用于比较模型状态，并非实际采样器整轮期望梯度，不含L2或Adam变换。记录范数比、余弦、冲突比例、表示范数、uniformity和对齐距离。
 
 ```bash
-python -m rrec_experiments.summarize runs/sgl_shared_v3/yelp2018
+python -m rrec_experiments.summarize runs/sgl_reference_v4/yelp2018
 ```
 
 四数据集仍保留，`--datasets all`才运行全部。Amazon-Book、iFashion保留官方README的配置；Gowalla保留此前ED探索配置，不宣称官方成绩复现。CLI可覆盖预设，实际值写入config。

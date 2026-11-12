@@ -59,7 +59,7 @@ class SGL(nn.Module):
 
 
 def all_node_infonce(view1, view2, anchor_ids, temperature=.2, chunk_size=256,
-                     anchor_mode="repeated", reduction="sum"):
+                     anchor_mode="repeated", reduction="sum", anchor_weights=None):
     """Official SGL: repeated batch anchors versus all same-type keys.
 
     Checkpointing bounds the saved logits memory without changing the objective.
@@ -68,6 +68,11 @@ def all_node_infonce(view1, view2, anchor_ids, temperature=.2, chunk_size=256,
         raise ValueError("temperature and chunk_size must be positive")
     if anchor_mode not in ("repeated", "unique") or reduction not in ("sum", "mean"):
         raise ValueError("Invalid anchor_mode or reduction")
+    if anchor_weights is not None:
+        if anchor_mode != "repeated" or anchor_weights.shape != anchor_ids.shape:
+            raise ValueError("Weighted CL requires repeated anchors and one weight per anchor")
+        if not torch.isfinite(anchor_weights).all() or (anchor_weights < 0).any():
+            raise ValueError("CL anchor weights must be finite and nonnegative")
     anchors = anchor_ids if anchor_mode == "repeated" else torch.unique(anchor_ids)
     if not anchors.numel():
         raise ValueError("At least one contrastive anchor is required")
@@ -76,13 +81,21 @@ def all_node_infonce(view1, view2, anchor_ids, temperature=.2, chunk_size=256,
     def part(a, b, labels):
         return F.cross_entropy(a @ b.T / temperature, labels, reduction="sum")
 
+    def weighted_part(a, b, labels, weights):
+        return (F.cross_entropy(a @ b.T / temperature, labels, reduction="none") * weights).sum()
+
     loss = x.new_zeros(())
-    for ids in anchors.split(chunk_size):
+    for start in range(0, anchors.numel(), chunk_size):
+        ids = anchors[start:start + chunk_size]
+        fn = part if anchor_weights is None else weighted_part
+        inputs = (x[ids], y, ids)
+        if anchor_weights is not None:
+            inputs += (anchor_weights[start:start + chunk_size],)
         if torch.is_grad_enabled() and (x.requires_grad or y.requires_grad):
-            loss = loss + checkpoint(part, x[ids], y, ids, use_reentrant=False,
+            loss = loss + checkpoint(fn, *inputs, use_reentrant=False,
                                      preserve_rng_state=False)
         else:
-            loss = loss + part(x[ids], y, ids)
+            loss = loss + fn(*inputs)
     # The optional unique-anchor intervention preserves the batch loss scale.
     if reduction == "mean":
         return loss / anchors.numel()
@@ -90,12 +103,35 @@ def all_node_infonce(view1, view2, anchor_ids, temperature=.2, chunk_size=256,
 
 
 def contrastive_loss(model, graph1, graph2, anchor_edges, temperature=.2,
-                     chunk_size=256, side="both", anchor_mode="repeated", reduction="sum"):
+                     chunk_size=256, side="both", anchor_mode="repeated", reduction="sum",
+                     user_weights=None):
     view1, view2 = model(graph1), model(graph2)
     n = model.num_users
     loss = view1.new_zeros(())
     if side in ("both", "user"):
-        loss = loss + all_node_infonce(view1[:n], view2[:n], anchor_edges[0], temperature, chunk_size, anchor_mode, reduction)
+        loss = loss + all_node_infonce(view1[:n], view2[:n], anchor_edges[0], temperature, chunk_size, anchor_mode, reduction, user_weights)
     if side in ("both", "item"):
         loss = loss + all_node_infonce(view1[n:], view2[n:], anchor_edges[1], temperature, chunk_size, anchor_mode, reduction)
     return loss
+
+
+def contrastive_components(model, graph1, graph2, edges, temperature=.2, chunk_size=256):
+    """Fixed-probe exact decomposition: -positive logit + logsumexp(all keys).
+
+    The partition term includes the positive key; it is not a pure negative-only
+    penalty or the sampled geometric uniformity statistic.
+    """
+    a, b = F.normalize(model(graph1), dim=1), F.normalize(model(graph2), dim=1)
+    n = model.num_users
+    alignment, partition = a.new_zeros(()), a.new_zeros(())
+
+    def partition_part(x, y):
+        return torch.logsumexp(x @ y.T / temperature, dim=1).sum()
+
+    for offset, size, ids in [(0, n, edges[0]), (n, model.num_items, edges[1])]:
+        x, y = a[offset:offset + size], b[offset:offset + size]
+        alignment = alignment - (x[ids] * y[ids]).sum() / temperature
+        for labels in ids.split(chunk_size):
+            partition = partition + checkpoint(partition_part, x[labels], y,
+                                                use_reentrant=False, preserve_rng_state=False)
+    return alignment / edges.size(1), partition / edges.size(1)

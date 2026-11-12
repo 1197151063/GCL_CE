@@ -16,6 +16,7 @@ from .metrics import evaluate
 from .model import SGL, normalized_graph, contrastive_loss
 from .sampling import batch_occupancy, epoch_indices, generator, negative_items, num_batches, sample_fingerprint
 from .presets import PRESETS
+from .weighting import user_anchor_weights
 
 VARIANTS = {
     "official": ("user", True),
@@ -25,7 +26,7 @@ VARIANTS = {
     "bpr-fast": ("fast", False),
     "bpr-full": ("full", False),
 }
-EXPERIMENT_PROTOCOL = "official_sgl_shared_fast_v3"
+EXPERIMENT_PROTOCOL = "official_sgl_attribution_v4"
 
 
 def parser():
@@ -49,6 +50,10 @@ def parser():
     p.add_argument("--cl-sampler", choices=("user", "fast", "full"), default="user",
                    help="Independent CL sampler for fast/full; official/shared-fast always reuse their BPR batch")
     p.add_argument("--cl-anchor-mode", choices=("repeated", "unique"), default="repeated")
+    p.add_argument("--user-cl-head-target", choices=("none", "fast", "user"), default="none",
+                   help="Reweight user CL rows to a target head mass, preserving expected user CL weight")
+    p.add_argument("--decompose-cl", action="store_true",
+                   help="Diagnose positive-alignment and log-partition gradients on the fixed unweighted probe")
     p.add_argument("--ssl-side", choices=("both", "user", "item"), default="both")
     p.add_argument("--temperature", type=float, default=.2)
     p.add_argument("--drop-ratio", type=float, default=.1)
@@ -89,6 +94,10 @@ def validate(args):
         raise ValueError("Positive ks must contain selection_k")
     if args.device.startswith("mps"):
         raise ValueError("Use CPU or CUDA: sparse graph operations are not supported here on MPS")
+    if args.user_cl_head_target != "none" and (args.cl_anchor_mode != "repeated" or args.ssl_side != "both"):
+        raise ValueError("Head CL attribution requires repeated anchors and ssl-side=both")
+    if args.decompose_cl and (args.cl_anchor_mode != "repeated" or args.ssl_side != "both"):
+        raise ValueError("CL decomposition uses repeated anchors and both sides")
 
 
 def jsonable(value):
@@ -133,7 +142,7 @@ def source_revision():
 def source_fingerprint():
     root = Path(__file__).resolve().parent.parent
     digest = hashlib.sha256()
-    for path in sorted((root / "rrec_experiments").glob("*.py")) + [root / "run.py"]:
+    for path in sorted((root / "rrec_experiments").glob("*.py")) + sorted(root.glob("run*.py")):
         digest.update(str(path.relative_to(root)).encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
@@ -166,16 +175,21 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
     model.train()
     policy = sampling_policy(args)
     device = model.embedding.weight.device
+    weight_table, _ = user_anchor_weights(data, policy["cl_sampler"], args.user_cl_head_target)
+    if weight_table is not None:
+        weight_table = weight_table.to(device)
     bpr_indices, cl_indices, l2_indices = epoch_samples(data, args, epoch)
     if args.ssl_weight:
         view1 = normalized_graph(data, device, args.drop_ratio, generator(args.seed, epoch, "view1"), args.self_loops)
         view2 = normalized_graph(data, device, args.drop_ratio, generator(args.seed, epoch, "view2"), args.self_loops)
     totals = defaultdict(float)
+    bpr_negative_digest, l2_negative_digest = hashlib.sha256(), hashlib.sha256()
     steps = num_batches(data, args.batch_size)
     for step, start in enumerate(range(0, data.num_edges, args.batch_size)):
         edges = make_batch(data, bpr_indices, start, args.batch_size)
         neg_stream = "official_negatives" if args.variant == "official" else "bpr_negatives"
         neg = negative_items(data, edges[0], generator(args.seed, epoch, step, neg_stream))
+        bpr_negative_digest.update(neg.contiguous().numpy().tobytes())
         cl_edges = make_batch(data, cl_indices, start, args.batch_size) if args.ssl_weight else None
         optimizer.zero_grad(set_to_none=True)
         bpr = model.bpr_terms(model(graph), edges.to(device), neg.to(device)).sum()
@@ -185,8 +199,10 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
                 le = make_batch(data, l2_indices, start, args.batch_size)
                 ln = negative_items(data, le[0], generator(args.seed, epoch, step, "official_negatives"))
                 reg = args.decay * model.l2(le.to(device), ln.to(device))
+                l2_negative_digest.update(ln.contiguous().numpy().tobytes())
             else:
                 reg = args.decay * model.l2(edges.to(device), neg.to(device))
+                l2_negative_digest.update(neg.contiguous().numpy().tobytes())
         # Backpropagate recommendation first to bound simultaneous graph memory.
         loss = bpr + reg
         if not torch.isfinite(loss):
@@ -194,9 +210,10 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         loss.backward()
         cl = bpr.new_zeros(())
         if args.ssl_weight:
+            user_weights = weight_table[cl_edges[0].to(device)] if weight_table is not None else None
             cl = args.ssl_weight * contrastive_loss(model, view1, view2, cl_edges.to(device),
                                                      args.temperature, args.anchor_chunk_size, args.ssl_side,
-                                                     args.cl_anchor_mode, "sum")
+                                                     args.cl_anchor_mode, "sum", user_weights)
             if not torch.isfinite(cl):
                 raise FloatingPointError(f"Nonfinite CL loss at epoch={epoch} step={step}")
             cl.backward()
@@ -207,11 +224,17 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         if cl_edges is not None:
             for key, value in batch_occupancy(data, edges, cl_edges, args.cl_anchor_mode).items():
                 totals[key] += value
+            if weight_table is not None:
+                totals["user_cl_weight_mean"] += float(user_weights.mean())
+                is_head = (data.user_group[cl_edges[0]] == 0).to(device)
+                totals["user_head_weighted_cl_share"] += float(user_weights[is_head].sum() / user_weights.sum())
     result = {k: v / (data.num_edges if k.endswith("_loss") else steps) for k, v in totals.items()}
     result["optimizer_steps"] = steps
     result["bpr_sample_fingerprint"] = sample_fingerprint(bpr_indices)
     result["cl_sample_fingerprint"] = sample_fingerprint(cl_indices) if args.ssl_weight else None
     result["l2_sample_fingerprint"] = sample_fingerprint(l2_indices) if args.decay else None
+    result["bpr_negative_fingerprint"] = bpr_negative_digest.hexdigest()
+    result["l2_negative_fingerprint"] = l2_negative_digest.hexdigest() if args.decay else None
     return result
 
 
@@ -238,11 +261,13 @@ def run(args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     commit = source_revision()
     policy = sampling_policy(args)
+    _, weighting = user_anchor_weights(data, policy["cl_sampler"], args.user_cl_head_target)
     config = {**vars(args), "effective_device": str(device), "torch_version": torch.__version__,
               "repository_commit": commit, "data": data.summary(),
               "experiment_protocol": EXPERIMENT_PROTOCOL, "source_fingerprint": source_fingerprint(),
               "loss_reduction": "sum", "augmentation": "fixed_count_ed",
               "sampling_policy": policy,
+              "user_cl_weighting": weighting,
               "effective_cl_sampler": policy["cl_sampler"],
               "effective_l2_source": policy["l2_source"],
               "cl_bpr_shared": policy["cl_bpr_shared"],

@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 
 from .data import GROUP_NAMES
-from .model import contrastive_loss, normalized_graph
+from .model import contrastive_loss, contrastive_components, normalized_graph
 from .sampling import generator, negative_items
 
 
@@ -41,12 +41,27 @@ def gradient_diagnostics(model, graph, data, args):
         cl_grad, = torch.autograd.grad(args.ssl_weight * raw_cl, model.embedding.weight)
     else:
         cl_grad = torch.zeros_like(rec_grad)
+    component_grads = None
+    if args.decompose_cl:
+        alignment, partition = contrastive_components(model, g1, g2, edges.to(device),
+                                                       args.temperature, args.anchor_chunk_size)
+        align_grad, = torch.autograd.grad(args.ssl_weight * alignment, model.embedding.weight, retain_graph=True)
+        partition_grad, = torch.autograd.grad(args.ssl_weight * partition, model.embedding.weight)
+        component_grads = (align_grad, partition_grad)
     with torch.no_grad():
         h = model(graph)
         result = {"bpr_loss": float(rec), "raw_cl_loss": float(raw_cl),
                   "probe_sampling": "fixed_fast", "loss_reduction": "mean_per_probe_interaction",
                   "weighted_cl_loss": float(args.ssl_weight * raw_cl),
                   "probe_edges": edges.size(1), "groups": {}}
+        if component_grads is not None:
+            result["infonce_components"] = {
+                "probe": "unweighted_fixed_fast_not_training_expected_gradient",
+                "alignment_loss": float(alignment), "partition_loss": float(partition),
+                "loss_sum_error": float((alignment + partition - raw_cl).abs()),
+                "gradient_sum_relative_error": float((align_grad + partition_grad - cl_grad).norm() /
+                                                       cl_grad.norm().clamp(min=1e-12)),
+                "partition_includes_positive_key": True}
         normalized = F.normalize(h, dim=1)
         result["positive_alignment"] = float((normalized[edges[0].to(device)] -
                                                normalized[(edges[1] + data.num_users).to(device)]).square().sum(1).mean())
@@ -77,4 +92,13 @@ def gradient_diagnostics(model, graph, data, args):
                     "embedding_norm_mean": float(h[ids].norm(dim=1).mean()),
                     "within_group_uniformity": sampled_uniformity(h[ids], generator(args.split_seed, side, name, "uniformity")),
                 }
+                if component_grads is not None:
+                    a, p = align_grad[ids], partition_grad[ids]
+                    denominator = float(r.square().sum())
+                    result["groups"][f"{side}_{name}"]["cl_components"] = {
+                        "alignment_gradient_norm": float(a.norm()),
+                        "partition_gradient_norm": float(p.norm()),
+                        "alignment_rec_projection": float((a * r).sum()) / denominator if denominator else None,
+                        "partition_rec_projection": float((p * r).sum()) / denominator if denominator else None,
+                        "net_cl_rec_projection": float((c * r).sum()) / denominator if denominator else None}
     return result

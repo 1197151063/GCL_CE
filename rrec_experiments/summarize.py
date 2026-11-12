@@ -33,7 +33,8 @@ def summarize(directory, allow_incomplete=False):
                       "split_seed", "data_protocol", "ks", "selection_k", "selection_split", "eval_every", "patience",
                       "strict_determinism", "repository_commit", "torch_version")
     compare_fields += ("experiment_protocol", "source_fingerprint", "init", "cl_sampler",
-                       "cl_anchor_mode", "loss_reduction", "augmentation", "selection_objective")
+                       "cl_anchor_mode", "loss_reduction", "augmentation", "selection_objective",
+                       "user_cl_head_target", "decompose_cl")
     cl_weights = set()
     for path in paths:
         result = json.loads(path.read_text())

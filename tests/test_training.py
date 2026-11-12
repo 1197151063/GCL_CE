@@ -13,7 +13,7 @@ def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatc
     common = ["--data-dir", str(fixture), "--variant", variant, "--device", "cpu", "--threads", "1",
               "--epochs", "2", "--batch-size", "16", "--dim", "4", "--layers", "1", "--ks", "2", "3",
               "--selection-k", "2", "--eval-every", "1", "--diagnostics-every", "1",
-              "--diagnostic-batch-size", "8", "--anchor-chunk-size", "3"]
+              "--diagnostic-batch-size", "8", "--anchor-chunk-size", "3", "--decompose-cl"]
     results, models = [], []
     model_type = train.SGL
 
@@ -44,6 +44,7 @@ def test_cpu_training_is_reproducible_and_saves_diagnostics(tmp_path, monkeypatc
     assert rows[0]["epoch"] == 0
     assert rows[-1]["checkpoint"] == "best"
     assert rows[-1]["groups"]["user_head"]["nodes"] > 0
+    assert rows[-1]["infonce_components"]["gradient_sum_relative_error"] < 1e-4
     assert results[0]["optimizer_steps"] == 6
 
 

@@ -1,0 +1,125 @@
+{
+  "date": "2026-11-12",
+  "scope": "Local tiny CPU pipeline and real Yelp head weights; not convergence",
+  "source_fingerprint": "5f5f72c64ffef24ed70d10992bb624b7d6d3fd5ac9e10dd52cc2ba0288db8bf5",
+  "unit_tests_passed": 39,
+  "all_8_runs_early_stopped_at_11": true,
+  "best_epoch": 1,
+  "optimizer_steps_each": 33,
+  "all_8_contrasts_reported": true,
+  "stream_checks": {
+    "bpr_positives": {
+      "field": "bpr_sample_fingerprint",
+      "runs": [
+        "baseline",
+        "cl-fast",
+        "l2-fast",
+        "cl-l2-fast",
+        "shared-fast",
+        "head-up",
+        "head-down",
+        "no-cl"
+      ],
+      "common_epochs": 11
+    },
+    "bpr_negatives": {
+      "field": "bpr_negative_fingerprint",
+      "runs": [
+        "baseline",
+        "cl-fast",
+        "l2-fast",
+        "cl-l2-fast",
+        "shared-fast",
+        "head-up",
+        "head-down",
+        "no-cl"
+      ],
+      "common_epochs": 11
+    },
+    "user_cl": {
+      "field": "cl_sample_fingerprint",
+      "runs": [
+        "baseline",
+        "l2-fast",
+        "head-up"
+      ],
+      "common_epochs": 11
+    },
+    "independent_fast_cl": {
+      "field": "cl_sample_fingerprint",
+      "runs": [
+        "cl-fast",
+        "cl-l2-fast"
+      ],
+      "common_epochs": 11
+    },
+    "shared_fast_cl": {
+      "field": "cl_sample_fingerprint",
+      "runs": [
+        "shared-fast",
+        "head-down"
+      ],
+      "common_epochs": 11
+    },
+    "official_l2_sample": {
+      "field": "l2_sample_fingerprint",
+      "runs": [
+        "baseline",
+        "cl-fast",
+        "head-up",
+        "no-cl"
+      ],
+      "common_epochs": 11
+    },
+    "official_l2_negative": {
+      "field": "l2_negative_fingerprint",
+      "runs": [
+        "baseline",
+        "cl-fast",
+        "head-up",
+        "no-cl"
+      ],
+      "common_epochs": 11
+    },
+    "bpr_l2_sample": {
+      "field": "l2_sample_fingerprint",
+      "runs": [
+        "l2-fast",
+        "cl-l2-fast",
+        "shared-fast",
+        "head-down"
+      ],
+      "common_epochs": 11
+    },
+    "bpr_l2_negative": {
+      "field": "l2_negative_fingerprint",
+      "runs": [
+        "l2-fast",
+        "cl-l2-fast",
+        "shared-fast",
+        "head-down"
+      ],
+      "common_epochs": 11
+    }
+  },
+  "max_component_gradient_sum_relative_error": 3.432678852277604e-07,
+  "saved_weights": false,
+  "real_yelp_user_cl_weights": {
+    "head-up": {
+      "target": "fast",
+      "base_head_mass": 0.1000063155235569,
+      "target_head_mass": 0.34262187626034646,
+      "expected_weight": 0.9999999999999998,
+      "head_weight": 3.426002392615299,
+      "nonhead_weight": 0.73042526306401
+    },
+    "head-down": {
+      "target": "user",
+      "base_head_mass": 0.34262187626034646,
+      "target_head_mass": 0.1000063155235569,
+      "expected_weight": 0.9999999999999998,
+      "head_weight": 0.2918853770083425,
+      "nonhead_weight": 1.3690654616807334
+    }
+  }
+}

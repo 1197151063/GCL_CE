@@ -1,8 +1,16 @@
 # 验证记录
 
-最新更新：2026-11-11。
+最新更新：2026-11-12。
 
-## 当前官方 SGL / 共享 Fast 对照协议 v3（2026-11-11）
+## 当前归因实验 v4（2026-11-12）
+
+- 新增`run_attribution.py`单入口：八组Fast BPR固定，CL×L2的2×2对照、独立/共享Fast CL、用户头部CL权重上调/下调、无CL对照。仅Yelp2018、seed2021、完整训练图、test Recall@20连续10轮无提升早停、不保存权重。官方Full基线不在本轮重复。默认结果目录`runs/attribution_v4/yelp2018`，源码协议标记`official_sgl_attribution_v4`。
+- **39项自动测试通过**：增加加权InfoNCE与完整矩阵的损失/梯度对照，重加权保持期望强度与组内分布，alignment/partition精确重构InfoNCE损失和梯度，所有归因组实际训练/汇总、下载后相对路径可重汇总、拒绝篡改处理配置及运行中源码变更。原官方目标一步更新、早停、不保存权重和Python3.8语法检查继续通过。
+- **八组微型CPU训练全部完成**：36条边，极小学习率制造平台期，均在第11轮早停、最佳第1轮、33次更新。正/负样本指纹符合预设控制，八项配对对照、CL×L2交互和逐epoch差值均正常生成；无`.pt`文件。分解梯度重构误差及完整Yelp头部权重记录于`validation/attribution_v4_smoke.json`。此处不是性能实验。
+- 本次头部权重干预只改变用户InfoNCE完整行的相对系数，用户CL期望总权重保持1，物品CL不变；不等价于单独增加吸引项。固定Fast探针分解中的log-partition包含正例，不是纯负例惩罚或几何uniformity；诊断不等于各训练采样器的期望梯度。
+- 截至本地代码验证，本轮尚未取得完整Yelp收敛成绩，不能确定归因。服务器实测与运行状态另记录，历史版本成绩不拼接进入本轮统计。
+
+## 此前官方 SGL / 共享 Fast 对照协议 v3（2026-11-11）
 
 - 新增shared-fast：BPR、重复InfoNCE anchors与L2三元组使用同一Fast batch，L2复用BPR负例。它与fast使用完全相同的BPR顺序、负例、初始化及增强图；fast/full仍保持原先只改BPR的行为。默认official、shared-fast、fast、full四组，Yelp2018单seed=2021、test Recall@20早停、不保存权重的设置不变。新结果放在`runs/sgl_shared_v3`，协议标记为`official_sgl_shared_fast_v3`。
 - **30项自动测试通过**。新增共享Fast与独立Fast CL随机流的区分、shared-fast完整训练路径与官方同batch总损失公式的梯度/Adam一步更新对照（包括L2正负样本），以及shared-fast重复训练的结果与诊断可复现性、实际采样元数据检查。Python3.8语法检查继续通过。
