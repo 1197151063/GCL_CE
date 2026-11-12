@@ -1,0 +1,71 @@
+{
+  "date": "2026-11-12",
+  "scope": "Two full-Yelp-graph 2048-interaction GPU updates plus component diagnostics; not convergence",
+  "python": "3.8.20",
+  "torch": "2.0.1+cu117",
+  "gpu": "NVIDIA GeForce GTX 1070",
+  "repository_commit": "731b9ac23e6ce98aece3e21d30cb68e833708001",
+  "source_fingerprint": "5f5f72c64ffef24ed70d10992bb624b7d6d3fd5ac9e10dd52cc2ba0288db8bf5",
+  "data": {
+    "num_users": 31668,
+    "num_items": 38048,
+    "train_edges": 1237259,
+    "test_edges": 324147,
+    "fingerprint": "b02dd44778d2686c60ade32017c5492cafa22294745f711b241965b8db47aeaa",
+    "user_groups": {
+      "head": 3167,
+      "middle": 12667,
+      "tail": 15834,
+      "cold": 0
+    },
+    "item_groups": {
+      "head": 3805,
+      "middle": 15219,
+      "tail": 19024,
+      "cold": 0
+    }
+  },
+  "cases": {
+    "head-up": {
+      "batch_size": 2048,
+      "dim": 64,
+      "layers": 3,
+      "weighted_cl_loss_per_interaction": 1.1622916460037231,
+      "finite_loss_gradients_and_updated_parameters": true,
+      "component_gradient_sum_relative_error": 3.4077115742547903e-06,
+      "peak_allocated_mib": 614.64208984375,
+      "seconds": 7.0672767162323,
+      "user_cl_weighting": {
+        "target": "fast",
+        "base_head_mass": 0.10000631552355689,
+        "target_head_mass": 0.3426218762603465,
+        "expected_weight": 0.9999999999999998,
+        "head_weight": 3.4260023926153,
+        "nonhead_weight": 0.7304252630640098
+      }
+    },
+    "head-down": {
+      "batch_size": 2048,
+      "dim": 64,
+      "layers": 3,
+      "weighted_cl_loss_per_interaction": 1.1329799890518188,
+      "finite_loss_gradients_and_updated_parameters": true,
+      "component_gradient_sum_relative_error": 3.3478522709629033e-06,
+      "peak_allocated_mib": 614.62451171875,
+      "seconds": 4.045433282852173,
+      "user_cl_weighting": {
+        "target": "user",
+        "base_head_mass": 0.3426218762603465,
+        "target_head_mass": 0.10000631552355689,
+        "expected_weight": 1.0,
+        "head_weight": 0.29188537700834244,
+        "nonhead_weight": 1.3690654616807336
+      }
+    }
+  },
+  "server_unit_tests": {
+    "passed": 39,
+    "pytest": "8.3.5",
+    "command": "python -m pytest -p no:capture -q"
+  }
+}
