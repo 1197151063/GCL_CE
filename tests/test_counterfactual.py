@@ -3,7 +3,7 @@ from pathlib import Path
 
 import torch
 
-from rrec_experiments.counterfactual import BudgetTransfer, fork_state, main, split_probe
+from rrec_experiments.counterfactual import BudgetTransfer, HeadShare, fork_state, main, split_probe
 from rrec_experiments.data import edge_codes, read_edges
 from rrec_experiments.model import SGL
 
@@ -57,6 +57,45 @@ def test_fork_copies_adam_moments_without_aliasing(tiny_data):
     assert torch.equal(param, original)
     step(model, optimizer)
     assert torch.equal(param, copied)
+
+
+def test_head_share_preserves_epoch_budget_and_non_head_ratios(tiny_data):
+    for target in [0., .1, .4, .6]:
+        dose = HeadShare(tiny_data, target)
+        chunks = []
+        for edges in tiny_data.train.split(5, dim=1):
+            user, item = dose(edges)
+            assert item is None and (user >= 0).all()
+            chunks.append(user)
+        w = torch.cat(chunks)
+        groups = tiny_data.user_group[tiny_data.train[0]]
+        assert abs(float(w.mean()) - 1.) < 1e-6
+        assert abs(float(w[groups == 0].sum() / w.sum()) - target) < 1e-6
+        assert w[groups != 0].unique().numel() == 1
+        assert abs(dose.report()["achieved_head_share"] - target) < 1e-6
+
+
+def test_head_dose_from_initialization_has_paired_diagnostics(tmp_path):
+    data = Path(__file__).parent / "fixtures/tiny"
+    output = tmp_path / "dose"
+    main(["--study", "head-dose", "--data-dir", str(data), "--output-dir", str(output),
+          "--head-shares", "0", ".6", "--fork-epochs", "0", "--horizons", "1", "2",
+          "--device", "cpu", "--dim", "4", "--layers", "1", "--threads", "1",
+          "--batch-size", "16", "--ks", "2", "--selection-k", "2"])
+    result = json.loads((output / "influence.json").read_text())
+    assert result["complete"] and result["study"] == "head-dose"
+    fork = result["forks"]["0"]
+    assert len(fork["transfers"]) == 2
+    for branch in fork["transfers"].values():
+        assert branch["sample_streams"] == fork["baseline"]["sample_streams"]
+        for tag in ["epoch_1", "epoch_2"]:
+            budget = branch["budget"][tag]
+            assert abs(budget["achieved_head_share"] - budget["target_head_share"]) < 1e-6
+            assert abs(budget["mean_weight"] - 1.) < 1e-6
+            diagnostic = branch["user_cl_probe"][tag]
+            assert all(-1.000001 <= group["positive_cosine"] <= 1.000001 for group in diagnostic.values())
+            assert 0 < sum(group["negative_key_mass"] for group in diagnostic.values()) <= 1.000001
+    assert "实际头部份额" in (output / "influence.md").read_text()
 
 
 def test_counterfactual_matrix_runs_without_a_test_file(tmp_path):

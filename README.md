@@ -17,6 +17,17 @@ python -u run_counterfactual.py --device cuda
 
 默认输出在 `runs/counterfactual_v1/yelp2018/`，包含 `influence.json`、`influence.md`、配置及日志；不保存权重。可用 `--fork-epochs 10 --horizons 1 5 --sides user` 缩小实验范围，重跑用新 `--output-dir`。第一版输出影响矩阵，不自动学习最终的节点权重。
 
+若要测**头部权重的剂量曲线**，使用同一入口：
+
+```bash
+python run_counterfactual.py --study head-dose --dry-run
+python -u run_counterfactual.py --study head-dose --device cuda
+```
+
+默认在初始化及第 10、20 轮分叉，各比较 Fast 原始权重和 0%、10%、20%、30%、40%、50%、60% 七个头部用户 CL 份额。这里的份额是 **用户侧 InfoNCE 行系数之和的占比**，不等于梯度占比。用户头部系数为目标份额除以 Fast 头部份额，非头部统一乘以对应的补足系数，因此保留头部组内以及中、尾之间的相对权重。每整轮用户侧系数总和等于原 Fast 行数；单个 batch 的总系数可以波动，日志记录其范围。物品侧、所有样本流、增强图及候选集合不变；0% 仍保留头部用户作为其他行的 key。
+
+结果写入 `runs/head_dose_v1/yelp2018/`。比较相同起点的一步、一轮、五轮的整体和分组 Recall@20，同时报告尾部物品条件 Recall。固定探针报告同一用户跨视图的正对余弦，以及其他 anchor 的 softmax 对各组负 key 的概率质量（去掉对角线、不重新归一化）。后两者是诊断量，不是实际训练流的梯度，也不单独识别正对齐与排斥的因果贡献。可用 `--head-shares` 改剂量，用 `--horizons 1 5 20` 拉长观察；短期最优不等于收敛后最优。组间转移矩阵与剂量扫描分别回答“预算从谁那里来”和“头部应该分多少”。
+
 ## 当前归因实验（2026-11-12）
 
 上一轮官方Full（代码名official）Recall@20=0.067432，共享Fast为0.068949；头部用户Recall@20分别为0.045276和0.046795。本轮不重复官方Full，也不跑额外R-Rec Full；固定所有组的Fast BPR正例顺序、负例和增强图，拆分收益来源。新增入口仍在本项目：
