@@ -9,6 +9,12 @@ from .sampling import contains
 def evaluate(model, graph, data, split="test", ks=(20, 50), batch_size=256, score="dot"):
     if split != "test":
         raise ValueError("Only test evaluation is supported")
+    return evaluate_targets(model, graph, data, data.test, ks, batch_size, score)
+
+
+@torch.no_grad()
+def evaluate_targets(model, graph, data, targets, ks=(20, 50), batch_size=256, score="dot"):
+    """Rank explicit targets while masking only edges present in the training graph."""
     if min(ks) <= 0 or max(ks) > data.num_items:
         raise ValueError("Ranking K must be between 1 and number of items")
     model.eval()
@@ -16,7 +22,6 @@ def evaluate(model, graph, data, split="test", ks=(20, 50), batch_size=256, scor
     eu, ei = representation[:data.num_users], representation[data.num_users:]
     if score == "cosine":
         eu, ei = F.normalize(eu, dim=-1), F.normalize(ei, dim=-1)
-    targets = data.test
     excluded = data.train
     excluded = excluded[:, torch.argsort(edge_codes(excluded, data.num_items))]
     offsets = offsets_for(excluded, data.num_users)

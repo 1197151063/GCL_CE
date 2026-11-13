@@ -1,5 +1,22 @@
 # SGL 官方基线、共享 Fast 与 BPR 采样实验
 
+## 多步反事实：CL 权重转移
+
+独立入口，用来测量把一部分 InfoNCE 权重从某个度数组转给另一组后，哪些用户的排序改善：
+
+```bash
+python run_counterfactual.py --dry-run
+python -u run_counterfactual.py --device cuda
+```
+
+默认 Yelp2018、seed=2021。固定独立 Fast BPR 和 Fast CL，L2 使用官方流。先在 fit 图上训练，在第 10 和 20 轮分别复制模型及 Adam 状态到内存中的分支。每个起点有 1 个不加权对照和 12 个转移分支：用户侧与物品侧各做头、中、尾三个组之间的六个有向转移。记录第 1 步、第 1 轮和第 5 轮的探针 Recall@20，以及同起点、同训练长度的分支差值。分支完成后，主模型沿原来的 Fast 训练轨迹继续。
+
+每个 batch 只对一个侧的两组重复 anchor 行进行转移，默认移动两组行数较小者的 25% 对应的权重，因此反方向转移量相同。该侧的 batch 总权重不变，另一侧和全节点候选集合不变；若任一组缺席，本 batch 不转移。JSON 中记录实际转移量和缺席 batch 数。BPR/CL/L2 采样按相同 seed、轮次和步次配对，并逐轮核对正负样本指纹；增强图也使用相同的随机流。这个干预改变整条 InfoNCE 行的系数，不单独改变正对齐或 log-partition。
+
+探针仅从原始 `train.txt` 留出，fit/探针不重叠，留出时保留每个原活跃用户和物品的训练边覆盖。分组使用 fit 图度数，所有分支使用相同探针和 fit 图。原始 `test.txt` 不读取；探针不用于早停或调权。与常规隐式反馈训练一致，BPR 排除已知 fit 正例来抽负例，探针标签不进入负采样逻辑。此结果测量干预响应，不与完整训练图的正式 test 分数拼表。
+
+默认输出在 `runs/counterfactual_v1/yelp2018/`，包含 `influence.json`、`influence.md`、配置及日志；不保存权重。可用 `--fork-epochs 10 --horizons 1 5 --sides user` 缩小实验范围，重跑用新 `--output-dir`。第一版输出影响矩阵，不自动学习最终的节点权重。
+
 ## 当前归因实验（2026-11-12）
 
 上一轮官方Full（代码名official）Recall@20=0.067432，共享Fast为0.068949；头部用户Recall@20分别为0.045276和0.046795。本轮不重复官方Full，也不跑额外R-Rec Full；固定所有组的Fast BPR正例顺序、负例和增强图，拆分收益来源。新增入口仍在本项目：

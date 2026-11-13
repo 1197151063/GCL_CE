@@ -104,14 +104,14 @@ def all_node_infonce(view1, view2, anchor_ids, temperature=.2, chunk_size=256,
 
 def contrastive_loss(model, graph1, graph2, anchor_edges, temperature=.2,
                      chunk_size=256, side="both", anchor_mode="repeated", reduction="sum",
-                     user_weights=None):
+                     user_weights=None, item_weights=None):
     view1, view2 = model(graph1), model(graph2)
     n = model.num_users
     loss = view1.new_zeros(())
     if side in ("both", "user"):
         loss = loss + all_node_infonce(view1[:n], view2[:n], anchor_edges[0], temperature, chunk_size, anchor_mode, reduction, user_weights)
     if side in ("both", "item"):
-        loss = loss + all_node_infonce(view1[n:], view2[n:], anchor_edges[1], temperature, chunk_size, anchor_mode, reduction)
+        loss = loss + all_node_infonce(view1[n:], view2[n:], anchor_edges[1], temperature, chunk_size, anchor_mode, reduction, item_weights)
     return loss
 
 

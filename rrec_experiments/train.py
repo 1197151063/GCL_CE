@@ -171,8 +171,12 @@ def epoch_samples(data, args, epoch):
     return bpr, cl, l2
 
 
-def train_epoch(model, optimizer, graph, data, args, epoch):
+def train_epoch(model, optimizer, graph, data, args, epoch, *, anchor_reweighter=None,
+                after_first_step=None):
     model.train()
+    if anchor_reweighter is not None and (args.user_cl_head_target != "none" or
+            args.cl_anchor_mode != "repeated" or args.ssl_side != "both" or not args.ssl_weight):
+        raise ValueError("External CL weighting requires both sides, repeated anchors, and no built-in weighting")
     policy = sampling_policy(args)
     device = model.embedding.weight.device
     weight_table, _ = user_anchor_weights(data, policy["cl_sampler"], args.user_cl_head_target)
@@ -211,13 +215,21 @@ def train_epoch(model, optimizer, graph, data, args, epoch):
         cl = bpr.new_zeros(())
         if args.ssl_weight:
             user_weights = weight_table[cl_edges[0].to(device)] if weight_table is not None else None
+            item_weights = None
+            if anchor_reweighter is not None:
+                user_weights, item_weights = (None if w is None else w.to(device) for w in anchor_reweighter(cl_edges))
             cl = args.ssl_weight * contrastive_loss(model, view1, view2, cl_edges.to(device),
                                                      args.temperature, args.anchor_chunk_size, args.ssl_side,
-                                                     args.cl_anchor_mode, "sum", user_weights)
+                                                     args.cl_anchor_mode, "sum", user_weights, item_weights)
             if not torch.isfinite(cl):
                 raise FloatingPointError(f"Nonfinite CL loss at epoch={epoch} step={step}")
             cl.backward()
         optimizer.step()
+        if step == 0 and after_first_step is not None:
+            try:
+                after_first_step(model)
+            finally:
+                model.train()
         totals["bpr_loss"] += float(bpr.detach())
         totals["l2_loss"] += float(reg.detach())
         totals["cl_loss"] += float(cl.detach())
