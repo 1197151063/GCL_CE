@@ -20,3 +20,17 @@ python run_full_cf.py --method nlgcl --dataset yelp2018 --data-dir /home/lhb/cyj
 ```
 
 The deployed suite waits on the final Gowalla queue before starting RGCF, LightGCL, LightCCF, SGCL, AdaGCL and NLGCL in order. Suite output is under /home/lhb/cyj/GCL_CE/runs/full_cf_yelp2018_v1. Each model has its own attempt directory with train.log, config.json, epochs.jsonl and result.json. A suite restart skips completed results and starts a fresh attempt for unfinished models.
+
+## Running all six models on another Linux GPU server
+
+From the project root, use an environment with CUDA-enabled PyTorch. The repository includes the Yelp2018 train/test files. The lhb environment uses Python 3.8 and PyTorch 2.0.1+cu117. On another server, the CUDA build should match that machine's NVIDIA driver.
+
+```bash
+python -m pip install -e .
+python -c "import torch; assert torch.cuda.is_available(), 'CUDA unavailable'; print(torch.__version__, torch.cuda.get_device_name(0))"
+(cd data/yelp2018 && sha256sum -c SHA256SUMS)
+mkdir -p runs/full_cf_yelp2018
+nohup python -u run_full_cf_suite.py --dataset yelp2018 --data-dir data/yelp2018 --output runs/full_cf_yelp2018 >> runs/full_cf_yelp2018/suite.log 2>&1 < /dev/null &
+```
+
+Omitting `--wait-queue` starts the suite immediately on the new server. Use `tail -f runs/full_cf_yelp2018/suite.log` to see which model is active. Epoch metrics appear in each model's `attempt_*/train.log`. All six results are collected in `runs/full_cf_yelp2018/summary.json`.
