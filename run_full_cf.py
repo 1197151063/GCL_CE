@@ -11,6 +11,7 @@ import torch
 from rrec_experiments.data import RecData
 from rrec_experiments.metrics import evaluate
 from rrec_experiments.model import normalized_graph
+from rrec_experiments.reproduced_paac import PAAC
 from rrec_experiments.reproduced_ada import AdaGCL
 from rrec_experiments.reproduced_cf import RGCF, LightGCL, LightCCF, SGCL, NLGCL
 from rrec_experiments.sampling import epoch_indices, generator, negative_items
@@ -19,6 +20,20 @@ from rrec_experiments.train import append_json, write_json
 
 # Per-method defaults reflect the releases; the outer sampling and evaluation protocol is shared.
 METHODS = {
+    "paac": (
+        PAAC,
+        dict(
+            layers=3,
+            batch_size=2048,
+            reg=1e-4,
+            eps=0.2,
+            ssl=0.2,
+            tau=0.2,
+            align=1.0,
+            cross_weight=0.2,
+            gamma=0.2,
+        ),
+    ),
     "rgcf": (
         RGCF,
         dict(layers=2, lr=4e-5, reg=1e-5, ssl=1e-6, tau=0.2, aug=0.1, prune=0.02),
@@ -45,6 +60,10 @@ def train(args):
         settings.update(reg=0.0)
     if args.dataset == "yelp2018" and args.method == "adagcl":
         settings.update(ssl=1.0, ib=0.01)
+    if cls is PAAC and args.dataset == "yelp2018":
+        settings.update(layers=5, ssl=10.0, align=1000.0, cross_weight=0.8, gamma=0.8)
+    if cls is PAAC and args.dataset == "gowalla":
+        settings.update(layers=6, ssl=5.0, align=50.0)
     for key, value in settings.items():
         if getattr(args, key, None) is None:
             setattr(args, key, value)
@@ -61,6 +80,12 @@ def train(args):
         raise ValueError("Invalid training dimensions, selection or temperature")
     if args.method == "adagcl" and args.layers not in (1, 2):
         raise ValueError("AdaGCL release supports one or two denoising layers")
+    if cls is PAAC and (
+        args.layers < 1
+        or not 0 <= args.gamma <= 1
+        or min(args.cross_weight, args.align, args.eps) < 0
+    ):
+        raise ValueError("Invalid PAAC depth or loss weights")
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     torch.set_num_threads(args.threads)
@@ -68,7 +93,7 @@ def train(args):
     if data.num_items < args.k:
         raise ValueError("Not enough items for requested K")
     device = torch.device(args.device)
-    graph = normalized_graph(data, device, self_loops=cls is AdaGCL)
+    graph = normalized_graph(data, device, self_loops=cls in (AdaGCL, PAAC))
     model = cls(data, args).to(device)
     optim = (
         model.optimizers()
@@ -126,6 +151,15 @@ def train(args):
                     f"{args.method}: first optimizer step complete, loss={value:.6f}",
                     flush=True,
                 )
+        alignment = None
+        if cls is PAAC:
+            optim.zero_grad(set_to_none=True)
+            alignment = model.alignment(graph, epoch)
+            if alignment is not None:
+                if not torch.isfinite(alignment):
+                    raise FloatingPointError(f"Nonfinite alignment at epoch {epoch}")
+                alignment.backward()
+                optim.step()
         metrics = evaluate(model, graph, data, "test", (args.k,), args.eval_batch_size)
         score = metrics["overall"][f"recall@{args.k}"]
         if not math.isfinite(score):
@@ -138,6 +172,8 @@ def train(args):
             test=metrics,
             best_epoch=best_epoch,
         )
+        if alignment is not None:
+            record["weighted_alignment_loss"] = alignment.detach().item()
         append_json(out / "epochs.jsonl", record)
         print(
             f"{args.method} epoch={epoch} recall@{args.k}={score:.6f} best={best:.6f} epoch_best={best_epoch}",
@@ -170,6 +206,20 @@ if __name__ == "__main__":
     p.add_argument("--eval-batch-size", type=int, default=256)
     for option in ("epochs", "patience", "batch-size", "dim", "layers", "rank"):
         p.add_argument("--" + option, type=int)
-    for option in ("tau", "lr", "reg", "ssl", "alpha", "ib", "l0", "aug", "prune"):
+    for option in (
+        "tau",
+        "lr",
+        "reg",
+        "ssl",
+        "alpha",
+        "ib",
+        "l0",
+        "aug",
+        "prune",
+        "eps",
+        "align",
+        "cross-weight",
+        "gamma",
+    ):
         p.add_argument("--" + option, type=float)
     train(p.parse_args())

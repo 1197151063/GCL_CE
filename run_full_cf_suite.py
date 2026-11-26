@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 
-ORDER = ("rgcf", "lightgcl", "lightccf", "sgcl", "adagcl", "nlgcl")
+ORDER = ("rgcf", "lightgcl", "lightccf", "sgcl", "adagcl", "nlgcl", "paac")
 
 
 def run_one(method, args):

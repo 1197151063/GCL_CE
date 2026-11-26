@@ -12,6 +12,9 @@ All models use the project's original train/test files, seed 2021 and full-catal
 | SGCL | [RecSys 2025](https://arxiv.org/abs/2507.13336) | [DavidZWZ/SGCL](https://github.com/DavidZWZ/SGCL/tree/84ca127f147f12ec44bff37ca53bbd79e57a3be4) | Supervised contrast on observed user-item pairs with within-batch user-user and item-item terms including their diagonals. |
 | AdaGCL | [KDD 2023](https://arxiv.org/abs/2305.10837) | [HKUDS/AdaGCL](https://github.com/HKUDS/AdaGCL/tree/6359f1ed568bf3f99d6351848b9a0c7391c1c93f) | Self-loop graph, VGAE view, hard-concrete edge denoiser, separate contrastive and information-bottleneck updates followed by ranking and generator optimization. |
 | NLGCL | [RecSys 2025](https://arxiv.org/abs/2507.07522) | [Jinfeng-Xu/NLGCL](https://github.com/Jinfeng-Xu/NLGCL/tree/2ba4e6637623e3d69ad72860ad6dd9e095ca27b3) | BPR plus adjacent-layer neighbor contrast. Uses the release's two directional in-batch denominators with repeated IDs. |
+| PAAC | [KDD 2024](https://arxiv.org/abs/2405.20718) | [miaomiao-cai2/KDD2024-PAAC](https://github.com/miaomiao-cai2/KDD2024-PAAC/tree/a784d24b67c9df1c035ae08cf0cc5253f363e97e) | Self-loop LightGCN, perturbed views, batch popularity reweighting and one additional optimizer step per epoch for within-user item alignment. |
+
+PAAC on Yelp2018 uses the published five-layer configuration with CL weight 10, alignment weight 1000, temperature and perturbation size 0.2, and group and cross-group coefficients 0.8. The outer sampling and test split follow this suite. The alignment step visits all training users with at least two items and averages over paired items, as in the release. The author's OOD/IID evaluation and our existing Yelp2018 split yield different evaluation protocols.
 
 On lhb, the working directory is /home/lhb/cyj/GCL_CE/experiments/full_cf_baselines_v1. For an individual run:
 
@@ -19,9 +22,9 @@ On lhb, the working directory is /home/lhb/cyj/GCL_CE/experiments/full_cf_baseli
 python run_full_cf.py --method nlgcl --dataset yelp2018 --data-dir /home/lhb/cyj/GCL_CE/data/yelp2018 --output-dir runs/nlgcl --device cuda
 ```
 
-The deployed suite waits on the final Gowalla queue before starting RGCF, LightGCL, LightCCF, SGCL, AdaGCL and NLGCL in order. Suite output is under /home/lhb/cyj/GCL_CE/runs/full_cf_yelp2018_v1. Each model has its own attempt directory with train.log, config.json, epochs.jsonl and result.json. A suite restart skips completed results and starts a fresh attempt for unfinished models.
+The deployed suite waits on the final Gowalla queue before starting RGCF, LightGCL, LightCCF, SGCL, AdaGCL, NLGCL and PAAC in order. Suite output is under /home/lhb/cyj/GCL_CE/runs/full_cf_yelp2018_v1. Each model has its own attempt directory with train.log, config.json, epochs.jsonl and result.json. A suite restart skips completed results and starts a fresh attempt for unfinished models.
 
-## Running all six models on another Linux GPU server
+## Running all seven models on another Linux GPU server
 
 From the project root, use an environment with CUDA-enabled PyTorch. The repository includes the Yelp2018 train/test files. The lhb environment uses Python 3.8 and PyTorch 2.0.1+cu117. On another server, the CUDA build should match that machine's NVIDIA driver.
 
@@ -33,4 +36,4 @@ mkdir -p runs/full_cf_yelp2018
 nohup python -u run_full_cf_suite.py --dataset yelp2018 --data-dir data/yelp2018 --output runs/full_cf_yelp2018 >> runs/full_cf_yelp2018/suite.log 2>&1 < /dev/null &
 ```
 
-Omitting `--wait-queue` starts the suite immediately on the new server. Use `tail -f runs/full_cf_yelp2018/suite.log` to see which model is active. Epoch metrics appear in each model's `attempt_*/train.log`. All six results are collected in `runs/full_cf_yelp2018/summary.json`.
+Omitting `--wait-queue` starts the suite immediately on the new server. Use `tail -f runs/full_cf_yelp2018/suite.log` to see which model is active. Epoch metrics appear in each model's `attempt_*/train.log`. All seven results are collected in `runs/full_cf_yelp2018/summary.json`.
